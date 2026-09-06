@@ -134,8 +134,7 @@ python src/fusion_model.py
 
 ### 3. Run Full Video Perception Pipeline & Telemetry Extraction
 ```bash
-python src/pipeline.py --input data/real_road.mp4.f401.mp4 --output outputs/road_fused_risk.mp4
-```
+python src/pipeline.py 
 
 ### 4. Launch Unified Live Intelligence Dashboard
 ```bash
