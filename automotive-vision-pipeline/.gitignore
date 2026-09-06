@@ -1,0 +1,70 @@
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# ── Virtual environments ────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Jupyter ─────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS / editor junk ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# ── Large video files ───────────────────────────────────────────────────
+# These are large (tens–hundreds of MB, sometimes GB) and GitHub blocks
+# anything over 100MB outright. Re-generate them locally via pipeline.py
+# or keep a small demo clip and upload separately (e.g. Google Drive link
+# in the README) instead of committing raw/processed video.
+data/*.mp4
+outputs/*.mp4
+outputs/*.gif
+!data/.gitkeep
+!outputs/.gitkeep
+
+# ── Model weights ───────────────────────────────────────────────────────
+# YOLO weights and the SSD caffemodel are large, pretrained, and
+# re-downloadable/re-trainable — no need to version them. Your OWN trained
+# XGBoost models (model_a/b/c .json) are small and ARE your actual
+# research artifact, so they're intentionally NOT ignored here — remove
+# the exclusion below only if you want to also track them via Git LFS
+# instead of committing directly.
+*.pt
+*.caffemodel
+*.prototxt
+!models/model_a_baseline.json
+!models/model_b_vision.json
+!models/model_c_fused.json
+
+# ── Generated telemetry / large JSON logs ──────────────────────────────
+# demo_telemetry.json is regenerated every time you run pipeline.py —
+# no need to track it, and it can get large with full 300+ frame runs.
+outputs/demo_telemetry*.json
+
+# ── Node (only relevant if you ever add npm tooling to web/) ───────────
+node_modules/
+package-lock.json
+
+# ── Secrets / environment config ───────────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+
+# ── Build artifacts ─────────────────────────────────────────────────────
+build/
+dist/
+*.egg

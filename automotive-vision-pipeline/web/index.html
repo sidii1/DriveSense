@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DriveSense AI — Fused Automotive Risk & Perception Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="brand-badge">ADAS</div>
+      <div class="brand-text">
+        <h1>DriveSense AI</h1>
+        <span class="sub-title">Multi-Modal Vision & Crash Risk Intelligence Platform</span>
+      </div>
+    </div>
+
+    <div class="nav-status-group">
+      <div class="model-badge-pill" id="activeModelPill">
+        <span class="pulse-dot"></span>
+        <span id="activeModelLabel">Model C: Fused Multi-Modal (XGBoost)</span>
+      </div>
+      <div class="telemetry-badge" id="fpsCounter">FPS: 30.0</div>
+    </div>
+  </header>
+
+  <!-- Main Split-Screen Container -->
+  <main class="dashboard-grid">
+    <!-- LEFT PANEL: Real-time Dashcam Perception Stream -->
+    <section class="panel video-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M23 7l-7 5 7 5V7z" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+          <h2>Real-Time Forward Perception Stream</h2>
+        </div>
+        <div class="video-controls-compact">
+          <button id="btnPlayPause" class="btn-control">
+            <span id="playIcon">▶ Play</span>
+          </button>
+          <button id="btnReset" class="btn-control secondary">↺ Restart</button>
+        </div>
+      </div>
+
+      <div class="video-viewport" id="viewportContainer">
+        <video id="dashcamVideo" src="/outputs/real_road_risk_web.mp4" muted playsinline loop></video>
+
+        <canvas id="telemetryOverlayCanvas"></canvas>
+
+        <!-- Interactive HUD Corner Pills -->
+        <div class="hud-layer">
+          <div class="hud-pill top-left">
+            <span class="hud-label">TRACKER:</span>
+            <span class="hud-val highlight" id="hudTrackerStatus">ByteTrack Active</span>
+          </div>
+          <div class="hud-pill top-right">
+            <span class="hud-label">FRAME:</span>
+            <span class="hud-val font-mono" id="hudFrameNumber">0 / 300</span>
+          </div>
+          <div class="hud-pill bottom-left" id="hudTtcAlert">
+            <span class="hud-label">MIN TTC:</span>
+            <span class="hud-val font-mono" id="hudMinTtc">-- s</span>
+          </div>
+          <div class="hud-pill bottom-right">
+            <span class="hud-label">LATERAL OFFSET:</span>
+            <span class="hud-val font-mono" id="hudLaneOffset">0.00 m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Perception Overlays Toggle Strip -->
+      <div class="toggles-strip">
+        <label class="toggle-chip active"><input type="checkbox" id="chkLane" checked> <span>Lane
+            Corridor</span></label>
+        <label class="toggle-chip active"><input type="checkbox" id="chkBoxes" checked> <span>ByteTrack
+            Boxes</span></label>
+        <label class="toggle-chip active"><input type="checkbox" id="chkTtc" checked> <span>TTC &
+            Proximity</span></label>
+        <label class="toggle-chip active"><input type="checkbox" id="chkHud" checked> <span>ADAS
+            Telemetry</span></label>
+      </div>
+
+      <!-- Quick Modality Switcher -->
+      <div class="modality-switch-container">
+        <div class="switch-title">Compare Model Architectures:</div>
+        <div class="modality-button-group">
+          <button class="btn-modality" data-model="A">
+            <strong>Model A</strong>
+            <small>Crash Tabular Only</small>
+          </button>
+          <button class="btn-modality" data-model="B">
+            <strong>Model B</strong>
+            <small>Vision Only</small>
+          </button>
+          <button class="btn-modality active" data-model="C">
+            <strong>Model C</strong>
+            <small>Multi-Modal Fused ★</small>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Risk Intelligence & SHAP Explainability -->
+    <section class="panel risk-panel">
+      <!-- 1. Risk Score Gauge Card -->
+      <div class="risk-card">
+        <div class="risk-header">
+          <div>
+            <h3>Context-Aware Risk Estimation</h3>
+            <p class="card-subtitle">Real-time inference with TreeSHAP explainability</p>
+          </div>
+          <div class="risk-badge badge-low" id="riskSeverityBadge">LOW RISK</div>
+        </div>
+
+        <div class="gauge-wrapper">
+          <div class="circular-gauge">
+            <svg viewBox="0 0 160 160" class="gauge-svg">
+              <circle class="gauge-bg" cx="80" cy="80" r="68"></circle>
+              <circle class="gauge-fill" id="gaugeProgress" cx="80" cy="80" r="68"></circle>
+            </svg>
+            <div class="gauge-content">
+              <div class="gauge-percent" id="riskPercentValue">18%</div>
+              <div class="gauge-caption">Crash Probability</div>
+            </div>
+          </div>
+
+          <div class="gauge-stats">
+            <div class="stat-item">
+              <span class="stat-label">Model Confidence</span>
+              <span class="stat-val" id="modelConfVal">94.2%</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Inference Latency</span>
+              <span class="stat-val font-mono" id="latencyVal">4.2 ms</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Decision Zone</span>
+              <span class="stat-val text-green" id="decisionZoneVal">Safe Operating Envelope</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. SHAP Top-3 Contributing Factors Card -->
+      <div class="shap-card">
+        <div class="card-head-row">
+          <h4>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            Top 3 SHAP Risk Contributors
+          </h4>
+          <span class="sub-tag">Local Attribution</span>
+        </div>
+
+        <div class="shap-factors-list" id="shapFactorsList">
+          <!-- Dynamically populated via app.js -->
+          <div class="factor-row">
+            <div class="factor-header">
+              <span class="factor-title">Time-to-Collision (TTC)</span>
+              <span class="factor-impact text-green">-0.18</span>
+            </div>
+            <div class="factor-bar-bg">
+              <div class="factor-bar-fill fill-green" style="width: 40%"></div>
+            </div>
+            <div class="factor-desc">Lead vehicle distance is 42m with benign TTC (7.8s)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Dynamic Risk Timeline Chart -->
+      <div class="timeline-card">
+        <div class="card-head-row">
+          <h4>Risk Score Trajectory Over Time</h4>
+          <span class="sub-tag">Rolling 300 Frames</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="riskTimelineCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- 4. Multi-Modal Telemetry Grid -->
+      <div class="telemetry-grid">
+        <div class="telemetry-box">
+          <div class="box-label">Lane Deviation</div>
+          <div class="box-value" id="telemOffsetVal">0.00 m</div>
+          <div class="offset-slider-track">
+            <div class="offset-slider-thumb" id="offsetThumb"></div>
+          </div>
+        </div>
+        <div class="telemetry-box">
+          <div class="box-label">Traffic Density</div>
+          <div class="box-value font-mono" id="telemDensityVal">1 objs</div>
+          <div class="box-sub">Forward View</div>
+        </div>
+        <div class="telemetry-box">
+          <div class="box-label">VRU Ratio</div>
+          <div class="box-value font-mono" id="telemVruVal">0%</div>
+          <div class="box-sub">Bikes & Peds</div>
+        </div>
+        <div class="telemetry-box">
+          <div class="box-label">Lane Confidence</div>
+          <div class="box-value font-mono text-green" id="telemConfVal">92%</div>
+          <div class="box-sub">Hough Support</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

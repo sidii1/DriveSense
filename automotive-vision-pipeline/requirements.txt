@@ -1,0 +1,14 @@
+opencv-python
+numpy
+ultralytics
+torch
+torchvision
+xgboost
+scikit-learn
+pandas
+matplotlib
+shap
+fastapi
+uvicorn
+pydantic
+joblib
