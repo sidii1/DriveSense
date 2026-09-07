@@ -140,4 +140,4 @@ python src/pipeline.py
 ```bash
 python src/dashboard.py
 ```
-Open your browser at **`http://localhost:8000`** to interact with the split-screen live ADAS feed, dynamic risk gauge, and real-time SHAP factor attributions.
+
