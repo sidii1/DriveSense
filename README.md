@@ -61,7 +61,7 @@ $$\text{TTC} = \begin{cases} \frac{d_t}{\dot{d}}, & \text{if } \dot{d} > 0.4\tex
 ### C. Lateral Lane Offset
 Assuming standard roadway lane width $W_{\text{std}} = 3.7\text{m}$ and camera centered on vehicle axis:
 $$d_{\text{offset}} = \left( \frac{W_{\text{img}}}{2} - \frac{x_{\text{left}} + x_{\text{right}}}{2} \right) \cdot \left( \frac{W_{\text{std}}}{x_{\text{right}} - x_{\text{left}}} \right)$$
-
+Fusing vision-derived kinematic features with historical crash-risk priors isn't an unexplored idea — insurance telematics and ADAS risk-scoring literature already does versions of this.
 ---
 
 ## 3. Benchmark Results: Model A vs Model B vs Model C
