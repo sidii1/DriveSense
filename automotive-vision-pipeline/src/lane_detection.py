@@ -53,10 +53,10 @@ class LaneDetector:
 
         # 3. Trapezoidal Region of Interest (ROI)
         roi_vertices = np.array([[
-            (int(width * 0.05), height),
-            (int(width * 0.44), int(height * 0.58)),
-            (int(width * 0.56), int(height * 0.58)),
-            (int(width * 0.95), height)
+            (int(width * 0.0), height),
+            (int(width * 0.50), int(height * 0.47)),
+            (int(width * 0.60), int(height * 0.47)),
+            (int(width * 0.70), height)
         ]], dtype=np.int32)
 
         roi_mask = np.zeros_like(edges)
@@ -68,9 +68,9 @@ class LaneDetector:
             masked_edges,
             rho=2,
             theta=np.pi / 180,
-            threshold=15,
-            minLineLength=25,
-            maxLineGap=20
+            threshold=80,
+            minLineLength=60,
+            maxLineGap=30
         )
 
         # 5. Lane Fitting and Temporal Exponential Smoothing
@@ -145,7 +145,7 @@ class LaneDetector:
                 (x1_n, y1_n), (x2_n, y2_n) = left_line
                 self.left_lane_cache = (
                     (int(x1_c * (1 - alpha) + x1_n * alpha), int(y1_c * (1 - alpha) + y1_n * alpha)),
-                    (int(x2_c * (1 - alpha) + x2_n * alpha), int(x2_c * (1 - alpha) + x2_n * alpha))
+                    (int(x2_c * (1 - alpha) + x2_n * alpha), int(y2_c * (1 - alpha) + y2_n * alpha))  # was x2_c/x2_n
                 )
         
         # Update right lane cache
@@ -156,9 +156,9 @@ class LaneDetector:
                 (x1_c, y1_c), (x2_c, y2_c) = self.right_lane_cache
                 (x1_n, y1_n), (x2_n, y2_n) = right_line
                 self.right_lane_cache = (
-                    (int(x1_c * (1 - alpha) + x1_n * alpha), int(y1_c * (1 - alpha) + y1_n * alpha)),
-                    (int(x2_c * (1 - alpha) + x2_n * alpha), int(x2_c * (1 - alpha) + x2_n * alpha))
-                )
+                     (int(x1_c * (1 - alpha) + x1_n * alpha), int(y1_c * (1 - alpha) + y1_n * alpha)),
+                     (int(x2_c * (1 - alpha) + x2_n * alpha), int(y2_c * (1 - alpha) + y2_n * alpha))  # was x2_c/x2_n
+)
 
         if left_line is None and right_line is None:
             self.consecutive_misses += 1
@@ -256,3 +256,11 @@ class LaneDetector:
             cv2.line(output, (int(width / 2), height - 35), (int(width / 2), height - 5), (0, 255, 0), 3, cv2.LINE_AA)
 
         return output
+
+if __name__ == "__main__":
+    detector = LaneDetector()
+    img = cv2.imread('data/kitti_raw/image_02/data/0000000000.png')
+    annotated, telemetry = detector.process_frame(img)
+    print(telemetry)
+    cv2.imshow("Lane Detection", annotated)
+    cv2.waitKey(0)
