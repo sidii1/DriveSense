@@ -267,11 +267,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const maxCircumference = 427.25; // 2 * PI * r(68)
     gaugeProgress.style.strokeDashoffset = maxCircumference * (1 - pct / 100);
 
-    if (data.risk_level === "HIGH") {
+    if (data.risk_level === "CRITICAL") {
+      gaugeProgress.style.stroke = "var(--accent-red)";
+      decisionZoneVal.textContent = "Critical — Immediate Intervention";
+      decisionZoneVal.className = "stat-val text-red";
+    } else if (data.risk_level === "HIGH") {
       gaugeProgress.style.stroke = "var(--accent-red)";
       decisionZoneVal.textContent = "Intervention Threshold";
       decisionZoneVal.className = "stat-val text-red";
-    } else if (data.risk_level === "MEDIUM") {
+    } else if (data.risk_level === "MODERATE") {
       gaugeProgress.style.stroke = "var(--accent-yellow)";
       decisionZoneVal.textContent = "Advisory Alert Zone";
       decisionZoneVal.className = "stat-val text-yellow";

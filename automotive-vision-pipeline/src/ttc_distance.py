@@ -134,3 +134,23 @@ class DistanceTTCEstimator:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
         return output
+
+if __name__ == "__main__":
+    import cv2
+    from src.object_detection import ObjectTracker
+
+    tracker = ObjectTracker()
+    ttc_est = DistanceTTCEstimator()
+
+    img = cv2.imread('data/kitti_raw/image_02/data/0000000000.png')
+    tracked = tracker.track(img, timestamp_sec=0.0)
+    enriched = ttc_est.estimate_distance_and_ttc(tracked, timestamp_sec=0.0)
+
+    print(f"Objects with distance/TTC: {len(enriched)}")
+    for obj in enriched:
+        print(obj)
+
+    annotated = tracker.draw_tracked_objects(img, tracked)
+    annotated = ttc_est.draw_distance_ttc_hud(annotated, enriched)
+    cv2.imshow("Distance & TTC", annotated)
+    cv2.waitKey(0)

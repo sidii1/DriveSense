@@ -181,3 +181,17 @@ class ObjectTracker:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
 
         return output
+
+
+if __name__ == "__main__":
+    tracker = ObjectTracker()
+    img = cv2.imread('data/kitti_raw/image_02/data/0000000000.png')
+
+    tracked_objects = tracker.track(img, timestamp_sec=0.0)
+    print(f"Tracked objects: {len(tracked_objects)}")
+    for obj in tracked_objects:
+        print(obj)
+
+    annotated = tracker.draw_tracked_objects(img, tracked_objects)
+    cv2.imshow("Object Tracking", annotated)
+    cv2.waitKey(0)

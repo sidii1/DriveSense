@@ -68,3 +68,10 @@ package-lock.json
 build/
 dist/
 *.egg
+
+data/
+outputs/
+*.mp4
+*.pt
+.venv/
+__pycache__/

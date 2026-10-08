@@ -46,4 +46,8 @@ with open(telemetry_log_path, 'w') as f:
 
 print("Done.")
 print("Video saved to:", output_video_path)
+<<<<<<< HEAD
 print("Telemetry log saved to:", telemetry_log_path)
+=======
+print("Telemetry log saved to:", telemetry_log_path)
+>>>>>>> c51a5aa84d0e2108c9798d7d459b82950ba0a76e

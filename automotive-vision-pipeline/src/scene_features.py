@@ -63,3 +63,19 @@ class SceneFeatureExtractor:
             "vru_ratio": round(vru_ratio, 3),
             "vru_count": int(vru_count)
         }
+
+
+if __name__ == "__main__":
+    from src.object_detection import ObjectTracker
+    from src.ttc_distance import DistanceTTCEstimator
+
+    tracker = ObjectTracker()
+    ttc_est = DistanceTTCEstimator()
+    scene_ext = SceneFeatureExtractor()
+
+    img = cv2.imread('data/kitti_raw/image_02/data/0000000000.png')
+    tracked = tracker.track(img, timestamp_sec=0.0)
+    enriched = ttc_est.estimate_distance_and_ttc(tracked, timestamp_sec=0.0)
+    scene = scene_ext.extract_features(img, enriched)
+
+    print("Scene features:", scene)
