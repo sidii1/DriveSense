@@ -1,117 +1,192 @@
 /**
- * DriveSense AI — Real-Time Unified Dashboard Frontend Logic (fixed)
+ * DriveSense AI — Dashboard frontend
  *
- * Fixes vs previous version:
- * 1. Rendering no longer depends on the <video> element successfully playing.
- *    A virtual frame clock (setInterval) drives all HUD/gauge/chart updates,
- *    so a broken/missing video no longer freezes the entire dashboard.
- * 2. Added video error/loadeddata handling with a visible on-screen message
- *    instead of silent failure.
- * 3. Model A/B/C switching now calls the real backend /predict endpoint
- *    (throttled) instead of faking risk scores with local JS formulas.
+ * - Overlays are driven by the <video> playback time (frame = floor(t * SRC_FPS))
+ * - Telemetry bboxes are in source-pixel space and get scaled to the canvas
+ * - Lane polygon comes from the detected lane lines, not a hardcoded shape
+ * - Risk gauge uses the lowest-TTC object + real scene photometry
+ * - No fake data: if telemetry is missing/mismatched the page says so
  */
-
 document.addEventListener("DOMContentLoaded", () => {
-  const video = document.getElementById("dashcamVideo");
-  const overlayCanvas = document.getElementById("telemetryOverlayCanvas");
-  const overlayCtx = overlayCanvas.getContext("2d");
+  // ── Config ───────────────────────────────────────────────────────────────
+  const SRC_FPS = 10;            // MUST match the ffmpeg -framerate used to build the video
+  const SPEED_LIMIT_MPH = 55.0;  // same tabular prior pipeline.py uses
+  const PREDICT_EVERY_MS = 500;
+  const TICK_MS = 50;
+  const MAX_HISTORY = 150;
 
-  const timelineCanvas = document.getElementById("riskTimelineCanvas");
+  // ── DOM ──────────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const video = $("dashcamVideo");
+  const viewport = $("viewportContainer");
+  const overlayCanvas = $("telemetryOverlayCanvas");
+  const overlayCtx = overlayCanvas.getContext("2d");
+  const timelineCanvas = $("riskTimelineCanvas");
   const timelineCtx = timelineCanvas.getContext("2d");
 
-  const btnPlayPause = document.getElementById("btnPlayPause");
-  const playIcon = document.getElementById("playIcon");
-  const btnReset = document.getElementById("btnReset");
+  const btnPlayPause = $("btnPlayPause");
+  const playIcon = $("playIcon");
+  const btnReset = $("btnReset");
 
-  const chkLane = document.getElementById("chkLane");
-  const chkBoxes = document.getElementById("chkBoxes");
-  const chkTtc = document.getElementById("chkTtc");
+  const chkLane = $("chkLane");
+  const chkBoxes = $("chkBoxes");
+  const chkTtc = $("chkTtc");
+  const chkHud = $("chkHud");
+  const hudLayer = document.querySelector(".hud-layer");
 
-  const hudFrameNumber = document.getElementById("hudFrameNumber");
-  const hudMinTtc = document.getElementById("hudMinTtc");
-  const hudLaneOffset = document.getElementById("hudLaneOffset");
-  const hudTtcAlert = document.getElementById("hudTtcAlert");
+  const hudFrameNumber = $("hudFrameNumber");
+  const hudMinTtc = $("hudMinTtc");
+  const hudLaneOffset = $("hudLaneOffset");
+  const hudTtcAlert = $("hudTtcAlert");
 
-  const riskPercentValue = document.getElementById("riskPercentValue");
-  const riskSeverityBadge = document.getElementById("riskSeverityBadge");
-  const gaugeProgress = document.getElementById("gaugeProgress");
-  const shapFactorsList = document.getElementById("shapFactorsList");
-  const latencyVal = document.getElementById("latencyVal");
-  const decisionZoneVal = document.getElementById("decisionZoneVal");
+  const riskPercentValue = $("riskPercentValue");
+  const riskSeverityBadge = $("riskSeverityBadge");
+  const gaugeProgress = $("gaugeProgress");
+  const shapFactorsList = $("shapFactorsList");
+  const latencyVal = $("latencyVal");
+  const decisionZoneVal = $("decisionZoneVal");
+  const modelConfVal = $("modelConfVal");
 
-  const telemOffsetVal = document.getElementById("telemOffsetVal");
-  const offsetThumb = document.getElementById("offsetThumb");
-  const telemDensityVal = document.getElementById("telemDensityVal");
-  const telemVruVal = document.getElementById("telemVruVal");
-  const telemConfVal = document.getElementById("telemConfVal");
+  const telemOffsetVal = $("telemOffsetVal");
+  const offsetThumb = $("offsetThumb");
+  const telemDensityVal = $("telemDensityVal");
+  const telemVruVal = $("telemVruVal");
+  const telemConfVal = $("telemConfVal");
 
   const modalityButtons = document.querySelectorAll(".btn-modality");
-  const activeModelPill = document.getElementById("activeModelLabel");
+  const activeModelPill = $("activeModelLabel");
+  $("fpsCounter").textContent = `Source: ${SRC_FPS} fps`;
 
-  let currentModel = "C";
-  let telemetryData = [];
+  // ── State ────────────────────────────────────────────────────────────────
+  let telemetry = [];
   let telemetryLoaded = false;
-  let currentFrameIdx = 0;
+  let videoFailed = false;
+  let currentIdx = 0;
   let riskHistory = [];
   let isPlaying = false;
-  let clockTimer = null;
-
-  const maxHistory = 150;
-  const TOTAL_FRAMES = 300;
-  const FRAME_INTERVAL_MS = 100; // 10fps virtual clock, independent of <video>
-  const PREDICT_EVERY_MS = 500;  // throttle real backend calls
+  let timer = null;
+  let tick = 0;
   let lastPredictAt = 0;
+  let predictInFlight = false;
+  let currentModel = "C";
+  let scaleX = 1, scaleY = 1;
 
-  function resizeCanvases() {
-    overlayCanvas.width = overlayCanvas.parentElement.clientWidth;
-    overlayCanvas.height = overlayCanvas.parentElement.clientHeight;
-    timelineCanvas.width = timelineCanvas.parentElement.clientWidth;
-    timelineCanvas.height = timelineCanvas.parentElement.clientHeight;
+  const EMPTY_FRAME = {
+    lane: {
+      lane_offset_m: 0, lane_curvature_rad_m: 0, lane_confidence: 0,
+      lane_detected: false, left_line: null, right_line: null
+    },
+    objects: [],
+    scene: {
+      traffic_density: 0, vru_ratio: 0, luminance_mean: 128,
+      contrast_rms: 50, glare_index: 0, rain_fog_scatter_index: 0
+    }
+  };
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ── On-screen messages (no silent failures) ──────────────────────────────
+  function makeMsg(css) {
+    const el = document.createElement("div");
+    el.style.cssText = css + "display:none;position:absolute;z-index:6;font:12px 'JetBrains Mono',monospace;";
+    viewport.appendChild(el);
+    return el;
   }
-  window.addEventListener("resize", resizeCanvases);
-  resizeCanvases();
+  const videoBanner = makeMsg(
+    "inset:0;align-items:center;justify-content:center;color:#F87171;" +
+    "background:rgba(15,20,28,0.92);text-align:center;padding:24px;");
+  videoBanner.textContent =
+    "Video failed to load. Confirm dashboard.py is running and that " +
+    "outputs/real_road_risk_web.mp4 exists (H.264 .mp4).";
+  const notice = makeMsg(
+    "left:50%;bottom:52px;transform:translateX(-50%);max-width:90%;color:#FBBF24;" +
+    "background:rgba(15,20,28,0.9);border:1px solid rgba(251,191,36,0.4);" +
+    "padding:6px 12px;border-radius:6px;text-align:center;pointer-events:none;");
 
-  // ── Video error handling (previously missing entirely) ─────────────────
-  const viewport = document.getElementById("viewportContainer");
-  const videoErrorBanner = document.createElement("div");
-  videoErrorBanner.style.cssText =
-    "position:absolute;inset:0;display:none;align-items:center;justify-content:center;" +
-    "color:#F87171;background:rgba(15,20,28,0.92);font:14px 'JetBrains Mono',monospace;" +
-    "text-align:center;padding:24px;z-index:5;";
-  videoErrorBanner.textContent =
-    "Video failed to load. Confirm dashboard.py is running (not opening index.html directly) " +
-    "and that data/real_road.mp4.f401.mp4 exists.";
-  viewport.appendChild(videoErrorBanner);
+  function showNotice(text) { notice.textContent = text; notice.style.display = "block"; }
+  function hideNotice() { notice.style.display = "none"; }
 
-  video.addEventListener("error", () => {
+  // ── Frame bookkeeping ────────────────────────────────────────────────────
+  function frameCount() {
+    if (telemetryLoaded) return telemetry.length;
+    return isFinite(video.duration) ? Math.round(video.duration * SRC_FPS) : 0;
+  }
+  function getFrame(idx) {
+    return telemetryLoaded ? telemetry[Math.min(idx, telemetry.length - 1)] : EMPTY_FRAME;
+  }
+  function leadObject(objs) {
+    if (!objs || !objs.length) return null;
+    return objs.reduce((a, b) => (b.ttc_sec < a.ttc_sec ? b : a));
+  }
+
+  function checkSync() {
+    if (!telemetryLoaded || !isFinite(video.duration) || video.duration === 0) return;
+    const videoFrames = Math.round(video.duration * SRC_FPS);
+    if (Math.abs(videoFrames - telemetry.length) > 2) {
+      showNotice(`Telemetry has ${telemetry.length} frames but the video has ~${videoFrames}. ` +
+        `Re-run pipeline.py on this same video.`);
+    } else {
+      hideNotice();
+    }
+  }
+
+  // ── Sizing: keep canvas + video + scale in sync ──────────────────────────
+  function updateScale() {
+    const srcW = video.videoWidth || 1392;
+    const srcH = video.videoHeight || 512;
+    viewport.style.aspectRatio = `${srcW} / ${srcH}`;
+    overlayCanvas.width = overlayCanvas.clientWidth;
+    overlayCanvas.height = overlayCanvas.clientHeight;
+    timelineCanvas.width = timelineCanvas.clientWidth;
+    timelineCanvas.height = timelineCanvas.clientHeight;
+    scaleX = overlayCanvas.width / srcW;
+    scaleY = overlayCanvas.height / srcH;
+    drawTimeline();
+    renderFrame();
+  }
+
+  // ── Video events ─────────────────────────────────────────────────────────
+  function onVideoError() {
     console.error("[DriveSense] Video failed to load:", video.error);
-    videoErrorBanner.style.display = "flex";
-  });
+    videoFailed = true;
+    videoBanner.style.display = "flex";
+  }
+  video.addEventListener("error", onVideoError);
+  video.addEventListener("loadedmetadata", () => { updateScale(); checkSync(); });
   video.addEventListener("loadeddata", () => {
-    videoErrorBanner.style.display = "none";
+    videoFailed = false;
+    videoBanner.style.display = "none";
+    updateScale();
+    checkSync();
   });
+  window.addEventListener("resize", updateScale);
+  if (video.error) onVideoError();
 
-  // ── Load pre-computed telemetry from the real pipeline run ─────────────
+  // ── Telemetry ────────────────────────────────────────────────────────────
   fetch("/api/telemetry")
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       if (Array.isArray(data) && data.length > 0) {
-        telemetryData = data;
+        telemetry = data;
         telemetryLoaded = true;
-        console.log(`[DriveSense] Loaded ${telemetryData.length} real telemetry frames.`);
+        console.log(`[DriveSense] Loaded ${telemetry.length} telemetry frames.`);
+        checkSync();
       } else {
-        console.warn("[DriveSense] /api/telemetry empty — run pipeline.py first. Using procedural fallback.");
+        showNotice("No telemetry found. Run pipeline.py to generate outputs/demo_telemetry.json.");
       }
+      renderFrame();
     })
-    .catch(err => {
-      console.warn("[DriveSense] Could not reach /api/telemetry. Using procedural fallback.", err);
+    .catch((err) => {
+      console.warn("[DriveSense] Could not reach /api/telemetry", err);
+      showNotice("Could not reach /api/telemetry. Is dashboard.py running?");
     });
 
-  // ── Play / Pause (drives the virtual clock, not just the <video>) ──────
+  // ── Controls ─────────────────────────────────────────────────────────────
   btnPlayPause.addEventListener("click", () => {
     isPlaying = !isPlaying;
     if (isPlaying) {
-      video.play().catch(e => console.warn("[DriveSense] video.play() rejected:", e));
+      video.play().catch((e) => console.warn("[DriveSense] video.play() rejected:", e));
       playIcon.textContent = "⏸ Pause";
       startClock();
     } else {
@@ -122,57 +197,71 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   btnReset.addEventListener("click", () => {
-    currentFrameIdx = 0;
+    currentIdx = 0;
     riskHistory = [];
-    try { video.currentTime = 0; } catch (e) { /* ignore if not seekable */ }
+    try { video.currentTime = 0; } catch (e) { /* not seekable yet */ }
+    drawTimeline();
     renderFrame();
   });
 
-  // ── Model switching now actually queries the backend ────────────────────
-  modalityButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      modalityButtons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentModel = btn.dataset.model;
-
-      const labels = {
-        A: "Model A: Crash Baseline (Tabular Only)",
-        B: "Model B: Vision Only (Kinematics)",
-        C: "Model C: Fused Multi-Modal (XGBoost ★)"
-      };
-      activeModelPill.textContent = labels[currentModel];
-
-      lastPredictAt = 0; // force an immediate re-prediction on switch
+  [[chkLane], [chkBoxes], [chkTtc], [chkHud]].forEach(([chk]) => {
+    chk.addEventListener("change", () => {
+      chk.closest(".toggle-chip").classList.toggle("active", chk.checked);
+      hudLayer.style.display = chkHud.checked ? "" : "none";
       renderFrame();
     });
   });
 
-  // ── Virtual frame clock: independent of whether <video> actually plays ──
-  function startClock() {
-    if (clockTimer) return;
-    clockTimer = setInterval(() => {
-      currentFrameIdx = (currentFrameIdx + 1) % TOTAL_FRAMES;
+  modalityButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      modalityButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentModel = btn.dataset.model;
+      activeModelPill.textContent = {
+        A: "Model A: Crash Baseline (Tabular Only)",
+        B: "Model B: Vision Only (Kinematics)",
+        C: "Model C: Fused Multi-Modal (XGBoost ★)",
+      }[currentModel];
+      riskHistory = [];
+      lastPredictAt = 0;
       renderFrame();
-    }, FRAME_INTERVAL_MS);
-  }
-  function stopClock() {
-    clearInterval(clockTimer);
-    clockTimer = null;
-  }
+    });
+  });
 
+  // ── Clock: frame index follows the video's own playback time ─────────────
+  function startClock() {
+    if (timer) return;
+    timer = setInterval(() => {
+      tick++;
+      const n = frameCount();
+      if (!n) return;
+      if (!videoFailed && video.readyState >= 2) {
+        currentIdx = Math.min(n - 1, Math.floor(video.currentTime * SRC_FPS + 1e-3));
+      } else if (tick % 2 === 0) {
+        currentIdx = (currentIdx + 1) % n;   // video broken: still step through telemetry
+      }
+      renderFrame();
+    }, TICK_MS);
+  }
+  function stopClock() { clearInterval(timer); timer = null; }
+
+  // ── Per-frame render ─────────────────────────────────────────────────────
   function renderFrame() {
-    const frameData = getBaseFrameTelemetry(currentFrameIdx);
+    const f = getFrame(currentIdx);
+    const lane = f.lane || EMPTY_FRAME.lane;
+    const scene = f.scene || EMPTY_FRAME.scene;
 
-    drawOverlays(frameData);
+    drawOverlays(f);
 
-    hudFrameNumber.textContent = `${currentFrameIdx} / ${TOTAL_FRAMES}`;
-    hudLaneOffset.textContent =
-      `${frameData.lane.lane_offset_m >= 0 ? '+' : ''}${frameData.lane.lane_offset_m.toFixed(2)} m`;
+    const n = frameCount();
+    hudFrameNumber.textContent = `${currentIdx + 1} / ${n || "--"}`;
 
-    const leadObj = frameData.objects[0];
-    hudMinTtc.textContent = leadObj ? `${leadObj.ttc_sec.toFixed(1)} s` : "-- s";
+    const off = lane.lane_offset_m;
+    hudLaneOffset.textContent = `${off >= 0 ? "+" : ""}${off.toFixed(2)} m`;
 
-    if (leadObj && leadObj.ttc_sec < 2.5) {
+    const lead = leadObject(f.objects);
+    hudMinTtc.textContent = lead ? `${lead.ttc_sec.toFixed(1)} s` : "-- s";
+    if (lead && lead.ttc_sec < 2.5) {
       hudTtcAlert.style.borderColor = "var(--accent-red)";
       hudTtcAlert.style.background = "rgba(239, 68, 68, 0.3)";
     } else {
@@ -180,227 +269,222 @@ document.addEventListener("DOMContentLoaded", () => {
       hudTtcAlert.style.background = "rgba(15, 20, 28, 0.75)";
     }
 
-    telemOffsetVal.textContent = `${frameData.lane.lane_offset_m.toFixed(2)} m`;
-    const sliderPercent = Math.min(100, Math.max(0, 50 + (frameData.lane.lane_offset_m / 1.5) * 50));
-    offsetThumb.style.left = `${sliderPercent}%`;
-
-    telemDensityVal.textContent = `${frameData.scene.traffic_density} objs`;
-    telemVruVal.textContent = `${Math.round(frameData.scene.vru_ratio * 100)}%`;
-    telemConfVal.textContent = `${Math.round(frameData.lane.lane_confidence * 100)}%`;
+    telemOffsetVal.textContent = `${off.toFixed(2)} m`;
+    offsetThumb.style.left = `${Math.min(100, Math.max(0, 50 + (off / 1.5) * 50))}%`;
+    telemDensityVal.textContent = `${scene.traffic_density} objs`;
+    telemVruVal.textContent = `${Math.round(scene.vru_ratio * 100)}%`;
+    telemConfVal.textContent = `${Math.round(lane.lane_confidence * 100)}%`;
 
     const now = performance.now();
-    if (now - lastPredictAt > PREDICT_EVERY_MS) {
+    if (!predictInFlight && now - lastPredictAt > PREDICT_EVERY_MS) {
       lastPredictAt = now;
-      requestRiskFromBackend(frameData);
+      requestRisk(f);
     }
-
-    drawTimelineChart();
   }
 
-  // ── Base per-frame kinematics: real telemetry if loaded, else procedural ─
-  function getBaseFrameTelemetry(idx) {
-    if (telemetryLoaded && telemetryData.length > 0) {
-      return telemetryData[idx % telemetryData.length];
-    }
-    const progress = (Math.sin(idx * 0.05) + 1.0) / 2.0;
-    const leadDist = 12.0 + (1.0 - progress) * 45.0;
-    const closingVel = progress > 0.6 ? 4.5 : -1.2;
-    const ttc = closingVel > 0.5 ? Math.max(1.1, leadDist / closingVel) : 10.0;
-    const offset = Math.sin(idx * 0.03) * 0.42;
-    return {
-      frame_id: idx,
-      lane: { lane_offset_m: offset, lane_curvature_rad_m: 0.0012, lane_confidence: 0.92, lane_detected: true },
-      objects: [{
-        id: 1, class_name: "car",
-        bbox: [
-          Math.floor(overlayCanvas.width * (0.42 + progress * 0.15)),
-          Math.floor(overlayCanvas.height * (0.55 + progress * 0.20)),
-          Math.floor(overlayCanvas.width * (0.58 + progress * 0.25)),
-          Math.floor(overlayCanvas.height * (0.75 + progress * 0.18))
-        ],
-        distance_m: leadDist, ttc_sec: ttc, approach_rate_mps: closingVel
-      }],
-      scene: { traffic_density: 1, vru_ratio: 0.0, luminance_mean: 145.0 }
-    };
-  }
+  // ── Risk prediction (same features pipeline.py builds) ───────────────────
+  async function requestRisk(f) {
+    const objs = f.objects || [];
+    const lane = f.lane || EMPTY_FRAME.lane;
+    const scene = f.scene || EMPTY_FRAME.scene;
 
-  // ── The actual live call to your XGBoost models via FastAPI ────────────
-  async function requestRiskFromBackend(frameData) {
-    const leadObj = frameData.objects[0] || {};
     const payload = {
       model_type: currentModel,
-      // NOTE: fixed demo scenario context. Wire these to real inputs/UI
-      // controls (time-of-day, weather selector, etc.) as a next step.
       hour: 14, month: 6, day_week: 3, weather: 1, lgt_cond: 1,
-      speed_limit_mph: 55.0,
-      lane_offset_m: frameData.lane.lane_offset_m,
-      lane_curvature_rad_m: frameData.lane.lane_curvature_rad_m,
-      lane_confidence: frameData.lane.lane_confidence,
-      min_ttc_sec: leadObj.ttc_sec ?? 10.0,
-      nearest_obj_distance_m: leadObj.distance_m ?? 50.0,
-      max_approach_rate_mps: leadObj.approach_rate_mps ?? 0.0,
-      traffic_density: frameData.scene.traffic_density,
-      vru_ratio: frameData.scene.vru_ratio
+      speed_limit_mph: SPEED_LIMIT_MPH,
+      lane_offset_m: lane.lane_offset_m,
+      lane_curvature_rad_m: lane.lane_curvature_rad_m,
+      lane_confidence: lane.lane_confidence,
+      min_ttc_sec: objs.length ? Math.min(...objs.map((o) => o.ttc_sec)) : 10.0,
+      nearest_obj_distance_m: objs.length ? Math.min(...objs.map((o) => o.distance_m)) : 60.0,
+      max_approach_rate_mps: objs.length ? Math.max(...objs.map((o) => o.approach_rate_mps)) : 0.0,
+      traffic_density: scene.traffic_density,
+      vru_ratio: scene.vru_ratio,
+      luminance_mean: scene.luminance_mean,
+      contrast_rms: scene.contrast_rms,
+      glare_index: scene.glare_index,
+      rain_fog_scatter_index: scene.rain_fog_scatter_index,
     };
 
+    const modelAtSend = currentModel;
     const t0 = performance.now();
+    predictInFlight = true;
     try {
       const res = await fetch("/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
-      updateRiskPanel(data, performance.now() - t0);
+      if (modelAtSend === currentModel) updateRiskPanel(data, performance.now() - t0);
     } catch (err) {
       console.error("[DriveSense] /predict call failed:", err);
+    } finally {
+      predictInFlight = false;
     }
   }
 
   function updateRiskPanel(data, latencyMs) {
-    const pct = data.risk_score;
+    const pct = data.risk_score;               // integer 0-100
+    const level = data.risk_level;             // LOW / MODERATE / HIGH / CRITICAL
+
     riskPercentValue.textContent = `${pct}%`;
-    riskSeverityBadge.textContent = `${data.risk_level} RISK`;
-    riskSeverityBadge.className = `risk-badge badge-${data.risk_level.toLowerCase()}`;
+    riskSeverityBadge.textContent = `${level} RISK`;
+    riskSeverityBadge.className = `risk-badge badge-${level.toLowerCase()}`;
+    gaugeProgress.style.strokeDashoffset = 427.25 * (1 - pct / 100);
 
-    const maxCircumference = 427.25; // 2 * PI * r(68)
-    gaugeProgress.style.strokeDashoffset = maxCircumference * (1 - pct / 100);
-
-    if (data.risk_level === "CRITICAL") {
-      gaugeProgress.style.stroke = "var(--accent-red)";
-      decisionZoneVal.textContent = "Critical — Immediate Intervention";
-      decisionZoneVal.className = "stat-val text-red";
-    } else if (data.risk_level === "HIGH") {
-      gaugeProgress.style.stroke = "var(--accent-red)";
-      decisionZoneVal.textContent = "Intervention Threshold";
-      decisionZoneVal.className = "stat-val text-red";
-    } else if (data.risk_level === "MODERATE") {
-      gaugeProgress.style.stroke = "var(--accent-yellow)";
-      decisionZoneVal.textContent = "Advisory Alert Zone";
-      decisionZoneVal.className = "stat-val text-yellow";
-    } else {
-      gaugeProgress.style.stroke = "var(--accent-green)";
-      decisionZoneVal.textContent = "Safe Operating Envelope";
-      decisionZoneVal.className = "stat-val text-green";
-    }
+    const zones = {
+      CRITICAL: ["var(--accent-red)", "Critical — Immediate Intervention", "text-red"],
+      HIGH: ["var(--accent-red)", "Intervention Threshold", "text-red"],
+      MODERATE: ["var(--accent-yellow)", "Advisory Alert Zone", "text-yellow"],
+      LOW: ["var(--accent-green)", "Safe Operating Envelope", "text-green"],
+    };
+    const [stroke, label, cls] = zones[level] || zones.LOW;
+    gaugeProgress.style.stroke = stroke;
+    decisionZoneVal.textContent = label;
+    decisionZoneVal.className = `stat-val ${cls}`;
 
     latencyVal.textContent = `${latencyMs.toFixed(1)} ms`;
+    modelConfVal.textContent = `Model ${data.model_used}${data.fallback ? " (fallback)" : ""}`;
 
-    if (data.top_3_factors && data.top_3_factors.length > 0) {
-      renderShapFactors(data.top_3_factors);
-    }
+    renderShap(data.top_3_factors);
 
     riskHistory.push(pct);
-    if (riskHistory.length > maxHistory) riskHistory.shift();
+    if (riskHistory.length > MAX_HISTORY) riskHistory.shift();
+    drawTimeline();
   }
 
-  function renderShapFactors(factors) {
-    shapFactorsList.innerHTML = factors.map(f => {
-      const isPositive = f.direction === "INCREASING_RISK";
-      const colorClass = isPositive ? (f.shap_value > 0.25 ? "fill-red" : "fill-yellow") : "fill-green";
-      const textClass = isPositive ? (f.shap_value > 0.25 ? "text-red" : "text-yellow") : "text-green";
-      const barWidth = Math.min(100, Math.max(10, Math.abs(f.shap_value) * 180));
+  function renderShap(factors) {
+    if (!factors || !factors.length) {
+      shapFactorsList.innerHTML =
+        `<div class="factor-row"><div class="factor-desc">No SHAP attribution for this prediction.</div></div>`;
+      return;
+    }
+    const maxAbs = Math.max(...factors.map((f) => Math.abs(f.shap_value)), 1e-6);
+    shapFactorsList.innerHTML = factors.map((f) => {
+      const up = f.direction === "INCREASING_RISK";
+      const strong = Math.abs(f.shap_value) > 0.5;
+      const fill = up ? (strong ? "fill-red" : "fill-yellow") : "fill-green";
+      const text = up ? (strong ? "text-red" : "text-yellow") : "text-green";
+      const width = Math.max(8, (Math.abs(f.shap_value) / maxAbs) * 100);
       return `
         <div class="factor-row">
           <div class="factor-header">
-            <span class="factor-title">${f.human_name}</span>
-            <span class="factor-impact ${textClass}">${f.shap_value >= 0 ? '+' : ''}${f.shap_value.toFixed(2)}</span>
+            <span class="factor-title">${esc(f.human_name)}</span>
+            <span class="factor-impact ${text}">${f.shap_value >= 0 ? "+" : ""}${f.shap_value.toFixed(2)}</span>
           </div>
-          <div class="factor-bar-bg"><div class="factor-bar-fill ${colorClass}" style="width: ${barWidth}%"></div></div>
-          <div class="factor-desc">${f.description}</div>
+          <div class="factor-bar-bg"><div class="factor-bar-fill ${fill}" style="width:${width}%"></div></div>
+          <div class="factor-desc">${esc(f.description)}</div>
         </div>`;
     }).join("");
   }
 
-  function drawOverlays(data) {
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  // ── Overlay drawing (source pixels → canvas pixels) ──────────────────────
+  function drawOverlays(f) {
     const w = overlayCanvas.width, h = overlayCanvas.height;
+    overlayCtx.clearRect(0, 0, w, h);
+    const P = (x, y) => [x * scaleX, y * scaleY];
 
-    if (chkLane.checked && data.lane.lane_detected) {
+    const lane = f.lane;
+    if (chkLane.checked && lane && lane.lane_detected && lane.left_line && lane.right_line) {
+      const [[lxb, lyb], [lxt, lyt]] = lane.left_line;
+      const [[rxb, ryb], [rxt, ryt]] = lane.right_line;
+
       overlayCtx.save();
       overlayCtx.beginPath();
-      overlayCtx.moveTo(w * 0.12, h);
-      overlayCtx.lineTo(w * 0.45, h * 0.55);
-      overlayCtx.lineTo(w * 0.55, h * 0.55);
-      overlayCtx.lineTo(w * 0.88, h);
+      overlayCtx.moveTo(...P(lxb, lyb));
+      overlayCtx.lineTo(...P(lxt, lyt));
+      overlayCtx.lineTo(...P(rxt, ryt));
+      overlayCtx.lineTo(...P(rxb, ryb));
       overlayCtx.closePath();
-      const offsetAbs = Math.abs(data.lane.lane_offset_m);
-      overlayCtx.fillStyle = offsetAbs > 0.4 ? "rgba(245, 158, 11, 0.22)" : "rgba(16, 185, 129, 0.22)";
+      overlayCtx.fillStyle = Math.abs(lane.lane_offset_m) > 0.4
+        ? "rgba(245, 158, 11, 0.22)" : "rgba(16, 185, 129, 0.22)";
       overlayCtx.fill();
+
       overlayCtx.lineWidth = 4;
-      overlayCtx.strokeStyle = "rgba(239, 68, 68, 0.8)";
+      overlayCtx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(...P(lxb, lyb)); overlayCtx.lineTo(...P(lxt, lyt));
+      overlayCtx.moveTo(...P(rxb, ryb)); overlayCtx.lineTo(...P(rxt, ryt));
       overlayCtx.stroke();
       overlayCtx.restore();
     }
 
-    if (chkBoxes.checked && data.objects) {
-      data.objects.forEach(obj => {
-        const [x1, y1, x2, y2] = obj.bbox;
-        const ttc = obj.ttc_sec, dist = obj.distance_m;
-        overlayCtx.save();
-        const boxColor = ttc < 2.5 ? "#EF4444" : ttc < 4.0 ? "#F59E0B" : "#10B981";
-        overlayCtx.strokeStyle = boxColor;
-        overlayCtx.lineWidth = 3;
+    (f.objects || []).forEach((obj) => {
+      const [bx1, by1, bx2, by2] = obj.bbox;
+      const x1 = bx1 * scaleX, y1 = by1 * scaleY, x2 = bx2 * scaleX, y2 = by2 * scaleY;
+      const ttc = obj.ttc_sec;
+      const color = ttc < 2.5 ? "#EF4444" : ttc < 4.0 ? "#F59E0B" : "#10B981";
+
+      overlayCtx.save();
+      overlayCtx.font = "bold 11px 'JetBrains Mono', monospace";
+
+      if (chkBoxes.checked) {
+        overlayCtx.strokeStyle = color;
+        overlayCtx.lineWidth = 2;
         overlayCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-        const label = `ID #${obj.id} ${obj.class_name.toUpperCase()} | ${dist.toFixed(0)}m`;
-        overlayCtx.font = "bold 11px 'JetBrains Mono', monospace";
-        const txtWidth = overlayCtx.measureText(label).width;
-        overlayCtx.fillStyle = boxColor;
-        overlayCtx.fillRect(x1, Math.max(0, y1 - 20), txtWidth + 12, 20);
+        const label = `#${obj.id} ${String(obj.class_name).toUpperCase()} | ${obj.distance_m.toFixed(0)}m`;
+        const tw = overlayCtx.measureText(label).width;
+        const ly = Math.max(0, y1 - 18);
+        overlayCtx.fillStyle = color;
+        overlayCtx.fillRect(x1, ly, tw + 10, 18);
         overlayCtx.fillStyle = "#FFFFFF";
-        overlayCtx.fillText(label, x1 + 6, Math.max(14, y1 - 5));
+        overlayCtx.fillText(label, x1 + 5, ly + 13);
+      }
 
-        if (chkTtc.checked) {
-          const ttcLabel = ttc < 10.0 ? `TTC: ${ttc.toFixed(1)}s` : `STABLE`;
-          overlayCtx.fillStyle = "rgba(15, 20, 28, 0.85)";
-          overlayCtx.fillRect(x1, y2, 80, 18);
-          overlayCtx.fillStyle = boxColor;
-          overlayCtx.fillText(ttcLabel, x1 + 4, y2 + 13);
-        }
-        overlayCtx.restore();
-      });
-    }
+      if (chkTtc.checked) {
+        const ttcLabel = ttc < 10.0 ? `TTC ${ttc.toFixed(1)}s` : "STABLE";
+        const tw = overlayCtx.measureText(ttcLabel).width;
+        overlayCtx.fillStyle = "rgba(15, 20, 28, 0.85)";
+        overlayCtx.fillRect(x1, y2, tw + 10, 18);
+        overlayCtx.fillStyle = color;
+        overlayCtx.fillText(ttcLabel, x1 + 5, y2 + 13);
+      }
+      overlayCtx.restore();
+    });
   }
 
-  function drawTimelineChart() {
-    timelineCtx.clearRect(0, 0, timelineCanvas.width, timelineCanvas.height);
+  // ── Risk timeline ────────────────────────────────────────────────────────
+  function drawTimeline() {
     const w = timelineCanvas.width, h = timelineCanvas.height;
+    timelineCtx.clearRect(0, 0, w, h);
 
-    timelineCtx.strokeStyle = "rgba(239, 68, 68, 0.35)";
     timelineCtx.lineWidth = 1;
     timelineCtx.setLineDash([4, 4]);
-    const yHigh = h * (1 - 0.70);
-    timelineCtx.beginPath(); timelineCtx.moveTo(0, yHigh); timelineCtx.lineTo(w, yHigh); timelineCtx.stroke();
-
-    const yMod = h * (1 - 0.45);
-    timelineCtx.strokeStyle = "rgba(245, 158, 11, 0.35)";
-    timelineCtx.beginPath(); timelineCtx.moveTo(0, yMod); timelineCtx.lineTo(w, yMod); timelineCtx.stroke();
+    [[70, "rgba(239,68,68,0.35)"], [45, "rgba(245,158,11,0.35)"], [25, "rgba(250,204,21,0.2)"]]
+      .forEach(([v, c]) => {
+        const y = h * (1 - v / 100);
+        timelineCtx.strokeStyle = c;
+        timelineCtx.beginPath(); timelineCtx.moveTo(0, y); timelineCtx.lineTo(w, y); timelineCtx.stroke();
+      });
     timelineCtx.setLineDash([]);
 
     if (riskHistory.length < 2) return;
 
+    const step = w / (MAX_HISTORY - 1);
     timelineCtx.beginPath();
-    timelineCtx.lineWidth = 2.5;
-    timelineCtx.strokeStyle = "#3B82F6";
-    const step = w / (maxHistory - 1);
     riskHistory.forEach((val, i) => {
       const x = i * step, y = h * (1 - val / 100);
       if (i === 0) timelineCtx.moveTo(x, y); else timelineCtx.lineTo(x, y);
     });
+    timelineCtx.lineWidth = 2.5;
+    timelineCtx.strokeStyle = "#3B82F6";
     timelineCtx.stroke();
 
+    const lastX = (riskHistory.length - 1) * step;
+    timelineCtx.lineTo(lastX, h);
+    timelineCtx.lineTo(0, h);
+    timelineCtx.closePath();
     const grad = timelineCtx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, "rgba(59, 130, 246, 0.25)");
     grad.addColorStop(1, "rgba(59, 130, 246, 0.0)");
-    timelineCtx.lineTo(w, h);
-    timelineCtx.lineTo(0, h);
-    timelineCtx.closePath();
     timelineCtx.fillStyle = grad;
     timelineCtx.fill();
   }
 
-  // Draw an initial frame immediately so the dashboard isn't blank pre-Play
-  renderFrame();
+  // Initial layout + first frame
+  updateScale();
+  if (video.readyState >= 1) checkSync();
 });
