@@ -1,0 +1,80 @@
+{
+  "Target_1": {
+    "LogisticRegression": {
+      "cv_roc_auc_mean": 0.7944,
+      "cv_roc_auc_std": 0.0046,
+      "tuned_threshold": 0.35,
+      "oof_f1": 0.7349
+    },
+    "RandomForest": {
+      "cv_roc_auc_mean": 0.8089,
+      "cv_roc_auc_std": 0.0046,
+      "tuned_threshold": 0.39,
+      "oof_f1": 0.7471
+    },
+    "XGBoost": {
+      "cv_roc_auc_mean": 0.8123,
+      "cv_roc_auc_std": 0.0035,
+      "tuned_threshold": 0.37,
+      "oof_f1": 0.7496
+    }
+  },
+  "Target_2": {
+    "LogisticRegression": {
+      "cv_roc_auc_mean": 0.7536,
+      "cv_roc_auc_std": 0.0091,
+      "tuned_threshold": 0.6,
+      "oof_f1": 0.3445
+    },
+    "RandomForest": {
+      "cv_roc_auc_mean": 0.7632,
+      "cv_roc_auc_std": 0.0109,
+      "tuned_threshold": 0.58,
+      "oof_f1": 0.3509
+    },
+    "XGBoost": {
+      "cv_roc_auc_mean": 0.7616,
+      "cv_roc_auc_std": 0.0099,
+      "tuned_threshold": 0.61,
+      "oof_f1": 0.3498
+    }
+  },
+  "DriveSense_Tiers": {
+    "Tier_1_Environmental": {
+      "cv_roc_auc_mean": 0.616,
+      "cv_roc_auc_std": 0.013,
+      "tuned_threshold": 0.53,
+      "oof_f1": 0.2457
+    },
+    "Tier_2a_VRU_Only": {
+      "cv_roc_auc_mean": 0.6692,
+      "cv_roc_auc_std": 0.0138,
+      "tuned_threshold": 0.56,
+      "oof_f1": 0.3053
+    },
+    "Tier_2b_VehType_Only": {
+      "cv_roc_auc_mean": 0.6394,
+      "cv_roc_auc_std": 0.0131,
+      "tuned_threshold": 0.55,
+      "oof_f1": 0.2631
+    },
+    "Tier_2_Perception_Upper_Bound": {
+      "cv_roc_auc_mean": 0.6807,
+      "cv_roc_auc_std": 0.0147,
+      "tuned_threshold": 0.54,
+      "oof_f1": 0.3087
+    },
+    "Tier_3_FullReport": {
+      "cv_roc_auc_mean": 0.7616,
+      "cv_roc_auc_std": 0.0099,
+      "tuned_threshold": 0.61,
+      "oof_f1": 0.3498
+    }
+  },
+  "Ablation_no_counts": {
+    "cv_roc_auc_mean": 0.7548,
+    "cv_roc_auc_std": 0.0078,
+    "tuned_threshold": 0.6,
+    "oof_f1": 0.3431
+  }
+}

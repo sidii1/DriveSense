@@ -69,6 +69,21 @@ print(f"\n5. /analytics -> Status: {res_analytics.status_code}")
 print("   Analytics Data:", res_analytics.json())
 assert res_analytics.status_code == 200
 
+# 6. Analyze Image Endpoint
+import numpy as np
+import cv2
+dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+_, encoded = cv2.imencode(".jpg", dummy_img)
+res_img = client.post(
+    "/analyze-image",
+    files={"file": ("test.jpg", encoded.tobytes(), "image/jpeg")}
+)
+print(f"\n6. /analyze-image -> Status: {res_img.status_code}")
+img_data = res_img.json()
+print("   Autofill:", img_data.get("autofill"))
+print("   Analysis:", img_data.get("analysis"))
+assert res_img.status_code == 200
+
 print("\n" + "=" * 60)
 print("  ALL DASHBOARD BACKEND ENDPOINTS PASSED SUCCESSFULLY!")
 print("=" * 60)

@@ -15,6 +15,19 @@ import numpy as np
 from typing import List, Dict, Any, Tuple
 from ultralytics import YOLO
 
+# Ensure robust linear assignment fallback (uses scipy when lap DLL is blocked or unavailable)
+try:
+    import ultralytics.trackers.utils.matching as matching
+    orig_linear_assignment = matching.linear_assignment
+    def safe_linear_assignment(cost_matrix: np.ndarray, thresh: float, use_lap: bool = True):
+        try:
+            return orig_linear_assignment(cost_matrix, thresh, use_lap=use_lap)
+        except Exception:
+            return orig_linear_assignment(cost_matrix, thresh, use_lap=False)
+    matching.linear_assignment = safe_linear_assignment
+except Exception:
+    pass
+
 
 class ObjectTracker:
     # COCO Class IDs relevant to automotive driving

@@ -36,27 +36,29 @@ class LaneDetector:
         hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
 
         # White lane lines (high lightness)
-        lower_white = np.array([0, 190, 0], dtype=np.uint8)
+        lower_white = np.array([0, 175, 0], dtype=np.uint8)
         upper_white = np.array([255, 255, 255], dtype=np.uint8)
         white_mask = cv2.inRange(hls, lower_white, upper_white)
 
         # Yellow lane lines (hue in yellow range, high saturation)
-        lower_yellow = np.array([10, 30, 80], dtype=np.uint8)
+        lower_yellow = np.array([10, 30, 70], dtype=np.uint8)
         upper_yellow = np.array([45, 204, 255], dtype=np.uint8)
         yellow_mask = cv2.inRange(hls, lower_yellow, upper_yellow)
 
         color_mask = cv2.bitwise_or(white_mask, yellow_mask)
 
-        # 2. Gaussian Blur + Canny Edge Detection
-        blurred = cv2.GaussianBlur(color_mask, (5, 5), 0)
-        edges = cv2.Canny(blurred, 50, 150)
+        # 2. Combined Color Mask + Grayscale Canny Edge Detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray_edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 40, 120)
+        color_edges = cv2.Canny(cv2.GaussianBlur(color_mask, (5, 5), 0), 40, 120)
+        edges = cv2.bitwise_or(gray_edges, color_edges)
 
         # 3. Trapezoidal Region of Interest (ROI)
         roi_vertices = np.array([[
-            (int(width * 0.0), height),
-            (int(width * 0.50), int(height * 0.47)),
-            (int(width * 0.60), int(height * 0.47)),
-            (int(width * 0.70), height)
+            (int(width * 0.02), height),
+            (int(width * 0.40), int(height * 0.48)),
+            (int(width * 0.60), int(height * 0.48)),
+            (int(width * 0.98), height)
         ]], dtype=np.int32)
 
         roi_mask = np.zeros_like(edges)
@@ -66,11 +68,11 @@ class LaneDetector:
         # 4. Probabilistic Hough Lines
         lines = cv2.HoughLinesP(
             masked_edges,
-            rho=2,
+            rho=1,
             theta=np.pi / 180,
-            threshold=80,
-            minLineLength=60,
-            maxLineGap=30
+            threshold=35,
+            minLineLength=30,
+            maxLineGap=40
         )
 
         # 5. Lane Fitting and Temporal Exponential Smoothing
@@ -102,10 +104,10 @@ class LaneDetector:
             slope = (y2 - y1) / (x2 - x1)
 
             # Left lane usually has negative slope in image coordinates
-            if -0.90 < slope < -0.35 and x1 < width * 0.55 and x2 < width * 0.55:
+            if -3.5 < slope < -0.30 and x1 < width * 0.55 and x2 < width * 0.55:
                 left_pts.extend([(x1, y1), (x2, y2)])
             # Right lane usually has positive slope
-            elif 0.35 < slope < 0.90 and x1 > width * 0.45 and x2 > width * 0.45:
+            elif 0.30 < slope < 3.5 and x1 > width * 0.45 and x2 > width * 0.45:
                 right_pts.extend([(x1, y1), (x2, y2)])
 
         y_bottom = height
@@ -113,6 +115,15 @@ class LaneDetector:
 
         left_extrapolated = self._extrapolate_line(left_pts, y_bottom, y_top)
         right_extrapolated = self._extrapolate_line(right_pts, y_bottom, y_top)
+
+        if left_extrapolated is not None and right_extrapolated is None:
+            (lx1, ly1), (lx2, ly2) = left_extrapolated
+            nominal_w = int(width * 0.45)
+            right_extrapolated = ((lx1 + nominal_w, ly1), (lx2 + nominal_w, ly2))
+        elif right_extrapolated is not None and left_extrapolated is None:
+            (rx1, ry1), (rx2, ry2) = right_extrapolated
+            nominal_w = int(width * 0.45)
+            left_extrapolated = ((rx1 - nominal_w, ry1), (rx2 - nominal_w, ry2))
 
         return left_extrapolated, right_extrapolated
 

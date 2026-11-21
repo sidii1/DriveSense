@@ -1,0 +1,16 @@
+{
+  "n_videos": 24,
+  "n_frames": 1200,
+  "alignment": "annotation",
+  "frames_per_video_median": 50.0,
+  "lane_detect_rate": 0.0525,
+  "frames_with_any_detection": 0.575,
+  "frames_with_in_path_object": 0.46166666666666667,
+  "frames_with_ttc_estimate": 0.305,
+  "videos_with_zero_detections": 0,
+  "nan_rate": {
+    "min_dist_path_m": 0.5383333333333333,
+    "lane_offset": 0.9475,
+    "brightness": 0.0
+  }
+}

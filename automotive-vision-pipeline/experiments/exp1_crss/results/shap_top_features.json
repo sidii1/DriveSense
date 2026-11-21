@@ -1,0 +1,126 @@
+{
+  "scientific_interpretation_note": "SHAP values quantify statistical feature attribution in the fitted XGBoost model, NOT real-world causal relationships. A positive SHAP value indicates that the presence of that feature increases the model's predicted probability of a serious/fatal injury outcome. Confounders such as impact velocity, helmet/seatbelt use, and local infrastructure are not controlled in this observational police-report baseline.",
+  "target": "Target 2 (Serious/Fatal KA vs Minor/None)",
+  "top_features": [
+    {
+      "rank": 1,
+      "feature": "Manner of Collision (code 2)",
+      "mean_abs_shap": 0.2884,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 2,
+      "feature": "Person Count",
+      "mean_abs_shap": 0.2654,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 3,
+      "feature": "Roadway Relation (code 1)",
+      "mean_abs_shap": 0.1806,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 4,
+      "feature": "Manner of Collision (code 5)",
+      "mean_abs_shap": 0.17,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 5,
+      "feature": "Motorcycle Crash Flag (code 1)",
+      "mean_abs_shap": 0.1672,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 6,
+      "feature": "Crash Type (code 2)",
+      "mean_abs_shap": 0.143,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 7,
+      "feature": "Time of Day (code 1)",
+      "mean_abs_shap": 0.1327,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 8,
+      "feature": "Speeding Crash Flag (code 1)",
+      "mean_abs_shap": 0.1209,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 9,
+      "feature": "Hit-and-Run Flag (code 1)",
+      "mean_abs_shap": 0.12,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 10,
+      "feature": "Intersection Type (code 1)",
+      "mean_abs_shap": 0.0891,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 11,
+      "feature": "Manner of Collision (code 3)",
+      "mean_abs_shap": 0.0859,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 12,
+      "feature": "Manner of Collision (code 4)",
+      "mean_abs_shap": 0.0812,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 13,
+      "feature": "Pedestrian Crash Flag (code 1)",
+      "mean_abs_shap": 0.0698,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 14,
+      "feature": "Junction Type (code 2)",
+      "mean_abs_shap": 0.0636,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 15,
+      "feature": "Day of Week (code 1)",
+      "mean_abs_shap": 0.0613,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 16,
+      "feature": "Roadway Relation (code 4)",
+      "mean_abs_shap": 0.056,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 17,
+      "feature": "Lighting (code 1)",
+      "mean_abs_shap": 0.0491,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 18,
+      "feature": "Motorcycle Crash Flag (code 2)",
+      "mean_abs_shap": 0.0433,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 19,
+      "feature": "Large Truck Present (code 0)",
+      "mean_abs_shap": 0.0396,
+      "direction": "toward_nonsevere"
+    },
+    {
+      "rank": 20,
+      "feature": "Weather (code 1)",
+      "mean_abs_shap": 0.0363,
+      "direction": "toward_nonsevere"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "2024": {
+    "total_crashes": 51641,
+    "t1_positives": 26522,
+    "t1_prevalence": 0.5135841676187526,
+    "t2_positives": 5763,
+    "t2_prevalence": 0.11159737417943107,
+    "weighted_t1_rate": 0.27736646125155046,
+    "weighted_t2_rate": 0.02633767766420343
+  },
+  "2023": {
+    "total_crashes": 50092,
+    "t1_positives": 25910,
+    "t1_prevalence": 0.5172482631957199,
+    "t2_positives": 5788,
+    "t2_prevalence": 0.11554739279725305,
+    "weighted_t1_rate": 0.28273513376037235,
+    "weighted_t2_rate": 0.026247617972566813
+  }
+}

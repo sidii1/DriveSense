@@ -1,0 +1,9 @@
+{
+  "alignment": "annotation",
+  "n_videos": 57,
+  "n_videos_all_three_windows": 57,
+  "clusters": {
+    "k": 2,
+    "silhouette": 0.33272480862502146
+  }
+}

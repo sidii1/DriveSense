@@ -1,0 +1,170 @@
+{
+  "metadata": {
+    "total_records": 101733,
+    "years_included": [
+      2023,
+      2024
+    ],
+    "leakage_excluded_variables": [
+      "A_CRAINJ",
+      "n_injured",
+      "n_serious",
+      "n_fatal",
+      "max_injury_severity"
+    ],
+    "post_crash_quarantined_variables": [
+      "A_ROLL",
+      "has_rollover"
+    ]
+  },
+  "tiers": {
+    "tier_1_environmental": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC"
+    ],
+    "tier_2a_vru_only": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "A_PED",
+      "A_PEDAL",
+      "A_MC",
+      "has_pedestrian",
+      "has_pedalcyclist",
+      "has_motorcycle"
+    ],
+    "tier_2b_veh_only": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "dominant_body",
+      "has_large_truck",
+      "A_LT",
+      "has_bus"
+    ],
+    "tier_2_perception_upper_bound": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "A_PED",
+      "A_PEDAL",
+      "A_MC",
+      "has_pedestrian",
+      "has_pedalcyclist",
+      "has_motorcycle",
+      "dominant_body",
+      "has_large_truck",
+      "A_LT",
+      "has_bus"
+    ],
+    "tier_3_full_historical": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "A_PED",
+      "A_PEDAL",
+      "A_MC",
+      "has_pedestrian",
+      "has_pedalcyclist",
+      "has_motorcycle",
+      "dominant_body",
+      "has_large_truck",
+      "A_LT",
+      "has_bus",
+      "A_MANCOL",
+      "A_CT",
+      "A_SPCRA",
+      "has_speeding_veh",
+      "A_DIST",
+      "A_HR",
+      "n_vehicles",
+      "n_persons"
+    ],
+    "ablation_no_counts": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "A_PED",
+      "A_PEDAL",
+      "A_MC",
+      "has_pedestrian",
+      "has_pedalcyclist",
+      "has_motorcycle",
+      "dominant_body",
+      "has_large_truck",
+      "A_LT",
+      "has_bus",
+      "A_MANCOL",
+      "A_CT",
+      "A_SPCRA",
+      "has_speeding_veh",
+      "A_DIST",
+      "A_HR"
+    ]
+  },
+  "column_types": {
+    "numeric": [
+      "n_vehicles",
+      "n_persons"
+    ],
+    "categorical": [
+      "A_WEATHER",
+      "A_TOD",
+      "A_DOW",
+      "A_INTER",
+      "A_RELRD",
+      "A_INTSEC",
+      "A_JUNC",
+      "A_PED",
+      "A_PEDAL",
+      "A_MC",
+      "has_pedestrian",
+      "has_pedalcyclist",
+      "has_motorcycle",
+      "dominant_body",
+      "has_large_truck",
+      "A_LT",
+      "has_bus",
+      "A_MANCOL",
+      "A_CT",
+      "A_SPCRA",
+      "has_speeding_veh",
+      "A_DIST",
+      "A_HR"
+    ],
+    "targets": [
+      "target_t1_any_inj",
+      "target_t2_serious_injury"
+    ],
+    "metadata": [
+      "CASENUM",
+      "YEAR",
+      "WEIGHT"
+    ]
+  }
+}

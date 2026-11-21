@@ -1,0 +1,56 @@
+{
+  "datasets": {
+    "2024": {
+      "year": "2024",
+      "n_acc": 51658,
+      "n_per": 126159,
+      "n_veh": 90641,
+      "n_merged": 51641,
+      "a_crainj_dist": {
+        "2": 25418,
+        "3": 25139,
+        "4": 1101
+      },
+      "t1_prevalence_unweighted": 0.5135841676187526,
+      "t1_prevalence_weighted": 0.27736646125155046,
+      "t2_prevalence_unweighted": 0.11159737417943107,
+      "t2_prevalence_weighted": 0.02633767766420343,
+      "sampling_weight_sum": 6176921.134927947,
+      "sampling_weight_mean": 119.61273280780672
+    },
+    "2023": {
+      "year": "2023",
+      "n_acc": 50103,
+      "n_per": 122388,
+      "n_veh": 87461,
+      "n_merged": 50092,
+      "a_crainj_dist": {
+        "2": 24775,
+        "3": 24194,
+        "4": 1134
+      },
+      "t1_prevalence_unweighted": 0.5172482631957199,
+      "t1_prevalence_weighted": 0.28273513376037235,
+      "t2_prevalence_unweighted": 0.11554739279725305,
+      "t2_prevalence_weighted": 0.026247617972566813,
+      "sampling_weight_sum": 6136241.332492216,
+      "sampling_weight_mean": 122.49942770287103
+    }
+  },
+  "target_definitions": {
+    "T1_any_injury": {
+      "name": "Target 1 (Any Injury vs. Property-Damage-Only)",
+      "description": "Positive class indicates crash resulted in at least one injured person (K, A, B, C, or Injured-Unknown). Negative class indicates Property-Damage-Only.",
+      "formula": "severe_crash_t1 = 1 if (A_CRAINJ in [2, 4] or any A_PERINJ in [1, 2, 3, 4, 7]) else 0",
+      "sample_balance": "~51% positive / ~49% negative",
+      "national_weighted_rate": "~28% (matches national police-reported injury crash share)"
+    },
+    "T2_serious_fatal": {
+      "name": "Target 2 (Suspected Serious Injury or Fatality vs. Non-Serious/None)",
+      "description": "Positive class indicates crash resulted in at least one suspected serious (incapacitating) injury (A) or fatality (K). Negative class indicates minor, possible, or no apparent injury.",
+      "formula": "severe_crash_t2 = 1 if any person in crash has A_PERINJ in [1, 2] else 0",
+      "sample_balance": "~11.4% positive / ~88.6% negative",
+      "national_weighted_rate": "~2.6% (matches federal highway safety severe crash statistics)"
+    }
+  }
+}

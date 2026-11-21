@@ -108,9 +108,19 @@ document.addEventListener("DOMContentLoaded", () => {
   function hideNotice() { notice.style.display = "none"; }
 
   // ── Frame bookkeeping ────────────────────────────────────────────────────
+  function getFps() {
+    if (telemetryLoaded && telemetry.length > 1) {
+      if (isFinite(video.duration) && video.duration > 0) {
+        return telemetry.length / video.duration;
+      }
+      const t1 = telemetry[1].timestamp_sec, t0 = telemetry[0].timestamp_sec;
+      if (t1 > t0 && (t1 - t0) > 0) return 1.0 / (t1 - t0);
+    }
+    return SRC_FPS;
+  }
   function frameCount() {
     if (telemetryLoaded) return telemetry.length;
-    return isFinite(video.duration) ? Math.round(video.duration * SRC_FPS) : 0;
+    return isFinite(video.duration) ? Math.round(video.duration * getFps()) : 0;
   }
   function getFrame(idx) {
     return telemetryLoaded ? telemetry[Math.min(idx, telemetry.length - 1)] : EMPTY_FRAME;
@@ -122,13 +132,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function checkSync() {
     if (!telemetryLoaded || !isFinite(video.duration) || video.duration === 0) return;
-    const videoFrames = Math.round(video.duration * SRC_FPS);
+    const fps = getFps();
+    const videoFrames = Math.round(video.duration * fps);
     if (Math.abs(videoFrames - telemetry.length) > 2) {
       showNotice(`Telemetry has ${telemetry.length} frames but the video has ~${videoFrames}. ` +
         `Re-run pipeline.py on this same video.`);
     } else {
       hideNotice();
     }
+    const fpsEl = $("fpsCounter");
+    if (fpsEl) fpsEl.textContent = `Source: ${Math.round(fps)} fps`;
   }
 
   // ── Sizing: keep canvas + video + scale in sync ──────────────────────────
@@ -236,7 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const n = frameCount();
       if (!n) return;
       if (!videoFailed && video.readyState >= 2) {
-        currentIdx = Math.min(n - 1, Math.floor(video.currentTime * SRC_FPS + 1e-3));
+        currentIdx = Math.min(n - 1, Math.floor(video.currentTime * getFps() + 1e-3));
       } else if (tick % 2 === 0) {
         currentIdx = (currentIdx + 1) % n;   // video broken: still step through telemetry
       }

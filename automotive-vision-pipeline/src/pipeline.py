@@ -82,8 +82,25 @@ def run_full_pipeline(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frames_to_process = min(total_frames, max_frames) if max_frames > 0 else total_frames
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+    out = None
+    for backend, fourcc_str in [
+        (cv2.CAP_MSMF, "H264"),
+        (cv2.CAP_MSMF, "avc1"),
+        (cv2.CAP_ANY, "avc1"),
+        (cv2.CAP_ANY, "H264"),
+        (cv2.CAP_ANY, "mp4v"),
+    ]:
+        try:
+            writer = cv2.VideoWriter(output_video_path, backend, cv2.VideoWriter_fourcc(*fourcc_str), fps, (width, height))
+            if writer.isOpened():
+                out = writer
+                print(f"[INFO] Initialized VideoWriter with backend={backend}, fourcc={fourcc_str}")
+                break
+        except Exception:
+            pass
+    if out is None or not out.isOpened():
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
     telemetry_log = []
     frame_idx = 0
@@ -185,6 +202,22 @@ def run_full_pipeline(
     cap.release()
     out.release()
 
+    # Ensure both real_road_risk_web.mp4 and road_fused_risk.mp4 exist in outputs
+    import shutil
+    outputs_dir = os.path.dirname(os.path.abspath(output_video_path))
+    web_mp4 = os.path.join(outputs_dir, "real_road_risk_web.mp4")
+    fused_mp4 = os.path.join(outputs_dir, "road_fused_risk.mp4")
+    if os.path.abspath(output_video_path) == os.path.abspath(web_mp4):
+        try:
+            shutil.copyfile(web_mp4, fused_mp4)
+        except Exception:
+            pass
+    elif os.path.abspath(output_video_path) == os.path.abspath(fused_mp4):
+        try:
+            shutil.copyfile(fused_mp4, web_mp4)
+        except Exception:
+            pass
+
     # Save full JSON telemetry log
     with open(telemetry_json_path, "w", encoding="utf-8") as f:
         json.dump(telemetry_log, f, indent=2)
@@ -262,8 +295,11 @@ def _draw_unified_hud(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Multi-Modal Automotive Perception & Risk Pipeline")
-    parser.add_argument("--input", "-i", default=os.path.join(os.path.dirname(__file__), "..", "data", "real_road.mp4.f401.mp4"))
-    parser.add_argument("--output", "-o", default=os.path.join(os.path.dirname(__file__), "..", "outputs", "road_fused_risk.mp4"))
+    default_input = os.path.join(os.path.dirname(__file__), "..", "inputs", "real_road_input.mp4.mp4")
+    if not os.path.exists(default_input):
+        default_input = os.path.join(os.path.dirname(__file__), "..", "data", "real_road.mp4.f401.mp4")
+    parser.add_argument("--input", "-i", default=default_input)
+    parser.add_argument("--output", "-o", default=os.path.join(os.path.dirname(__file__), "..", "outputs", "real_road_risk_web.mp4"))
     parser.add_argument("--telemetry", "-t", default=os.path.join(os.path.dirname(__file__), "..", "outputs", "demo_telemetry.json"))
     parser.add_argument("--max-frames", "-m", type=int, default=300)
     args = parser.parse_args()
