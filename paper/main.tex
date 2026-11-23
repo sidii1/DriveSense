@@ -1,0 +1,227 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  IRIS 2027 (Shaastra, IIT Madras) -- final paper, Springer LNEE proceedings
+%  Class: svproc (Springer Proceedings LaTeX2e package, v1.3). Do NOT edit svproc.cls.
+%  Build: pdflatex main && pdflatex main      (no BibTeX needed: references are inline)
+%
+%  Every number comes from an auto-generated file -- never type results by hand:
+%    generated_pilot.tex, generated_pilot_table.tex   <- paper/scripts/pilot.py  (audit, all 1,500 accident clips)
+%    generated_eval.tex, generated_tab_{main,control,leak}.tex <- experiments/exp3_ccd/04_anticipation_eval.py
+%    generated_within.tex, generated_tab_within.tex   <- experiments/exp3_ccd/06_within_clip.py
+%    generated_extra.tex                              <- experiments/exp3_ccd/09_extra_macros.py
+%    generated_runtime.tex                            <- experiments/exp3_ccd/08_runtime.py
+%  Check before submission:  python scripts/check_paper.py
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass{svproc}
+\usepackage{url}
+\def\UrlFont{\rmfamily}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\newif\ifEvalAvailable \EvalAvailablefalse
+\input{generated_pilot.tex}
+\input{generated_eval.tex}
+\input{generated_within.tex}
+\input{generated_extra.tex}
+\input{generated_runtime.tex}
+
+\begin{document}
+\mainmatter
+\title{DriveSense: An Explainable Baseline for Early Collision Anticipation from Dashcam Video Using Calibration-Free Cues}
+\titlerunning{DriveSense: Explainable Collision Anticipation from Dashcam Video}
+% Authors: order + corresponding author must match the Contributor Agreement and the e-mail exactly.
+\author{Siddhi Dhoke\thanks{Corresponding author.} \and Nakul Bhadade}
+\authorrunning{S. Dhoke and N. Bhadade}
+\institute{Indian Institute of Information Technology Nagpur, Nagpur, Maharashtra, India\\
+\email{sidii0080@gmail.com, nakulccs@gmail.com}}
+\maketitle
+
+\begin{abstract}
+Anticipating a collision from a single forward camera is central to low-cost driver assistance, yet anticipation models are mostly opaque and are benchmarked on accident and normal clips that come from different video sources. We present DriveSense, a lightweight, explainable baseline for early collision anticipation from dashcam video, and use it to audit the Car Crash Dataset. It combines YOLOv8 detection with ByteTrack tracking, a calibration-free time-to-contact cue from the growth of tracked boxes, a detector-free time-to-contact from optical-flow divergence, photometric scene descriptors and central flow, fused by gradient-boosted trees with TreeSHAP attributions. We split by clip with the official lists, fix thresholds on held-out clips and report bootstrap confidence intervals. On the first second of each clip, before any accident, encoding properties alone separate accident from normal clips with an AUC of \LeakNuisAUC{}, and visual cues with \LeakAllAUC; the fused model's crash-versus-normal average precision of \FusedAP{} therefore cannot be read as anticipation skill. Comparing frames within accident clips removes the source: fused cues separate the last second before the accident from frames over two seconds earlier with an AUC of \WFusedAUC{} (95\% CI [\WFusedAUCLo, \WFusedAUCHi]), kinematic cues alone reach \WKinAUC, and the box-growth time-to-contact rule is no better than chance (\WRuleBoxAUC). Detector coverage falls toward impact, whereas detector-free flow magnitude rises in \TFlowInc\% of accident clips and not in normal clips.
+\keywords{Collision anticipation, Dashcam video, Time-to-contact, Explainable AI, Dataset source bias, Monocular vision}
+\end{abstract}
+
+%=============================================================================
+\section{Introduction}
+%=============================================================================
+Road traffic crashes kill about 1.19 million people every year~\cite{who2023}. Single-camera forward collision warning is attractive where radar-equipped vehicles are rare. The research community frames the problem as \emph{accident anticipation}: raise an alert as early as possible before an accident while keeping false alarms low~\cite{chan2016,suzuki2018,bao2020}. Recent deep, end-to-end models reach high average precision, but their alerts are hard to inspect, and they are usually trained and tested on accident and normal clips from different video sources. If those sources differ in resolution, compression, camera placement or weather, a classifier can separate them without modeling risk at all---a form of dataset bias or shortcut learning~\cite{torralba2011,geirhos2020}. A lightweight, interpretable baseline can expose such effects, because every alert traces to named, physically meaningful cues.
+
+We present \emph{DriveSense}, an explainable anticipation baseline for monocular dashcam video, with three contributions:
+\begin{enumerate}
+\item Two \textbf{calibration-free time-to-contact (TTC) cues}, one from the growth of tracked boxes and one, detector-free, from optical-flow divergence, with an audit of their availability in accident footage.
+\item A \textbf{source-leakage test} showing how much of the crash-versus-normal separation of the Car Crash Dataset is already present before any accident, and a \textbf{within-accident protocol} that removes the source difference by contrasting frames of the same clip.
+\item An \textbf{explainable gradient-boosted baseline} with feature-group ablations, rule-based TTC baselines, metrics at a fixed false-alarm rate with bootstrap confidence intervals, and TreeSHAP attributions~\cite{lundberg2017,lundberg2020}.
+\end{enumerate}
+
+%=============================================================================
+\section{Related Work}
+%=============================================================================
+Chan et al.~\cite{chan2016} introduced dashcam accident anticipation with a dynamic-spatial-attention recurrent network and the mean time-to-accident (mTTA) metric; Suzuki et al.~\cite{suzuki2018} proposed an adaptive loss for early anticipation; Bao et al.~\cite{bao2020} released the Car Crash Dataset (CCD) with a graph-recurrent Bayesian model; and Yao et al.~\cite{yao2023} studied unsupervised traffic anomaly detection on DoTA. These methods learn appearance features end-to-end, whereas we seek a transparent baseline in which each cue's contribution is measurable. The ratio of an object's image size to its rate of expansion specifies time-to-contact without distance or speed~\cite{lee1976}, a principle used by commercial monocular forward collision warning~\cite{dagan2004}; we apply it on top of a generic detector and tracker~\cite{yolov8,zhang2022} and use gradient-boosted trees~\cite{chen2016} with exact TreeSHAP~\cite{lundberg2020}.
+
+%=============================================================================
+\section{Method}
+%=============================================================================
+Figure~\ref{fig:pipeline} summarizes the pipeline; every cue is computed causally from current and past frames.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{figures/fig_pipeline.pdf}
+\caption{DriveSense pipeline. Kinematic, scene and motion cues are summarized over a causal 1-s context and fused by gradient-boosted trees; TreeSHAP attributes each alert to its cues. Lane geometry is audited but not used as a model input}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Perception Front End}
+YOLOv8-s~\cite{yolov8} detects cars, buses, trucks, motorcycles, bicycles and pedestrians (confidence $\geq 0.25$, input size 960 pixels), and ByteTrack~\cite{zhang2022} links detections into tracks; tracker state is reset at the start of each clip. A detection is \emph{in path} if its horizontal center lies within $\pm 0.22W$ of the image center and its bottom edge lies in the lower half of the frame, where $W$ is the image width.
+
+\subsection{Calibration-Free Time-to-Contact}
+Under a pinhole camera, an object of physical size $S$ at depth $Z(t)$ has image size $s(t)=fS/Z(t)$. Differentiating the logarithm removes both the focal length $f$ and the unknown size $S$:
+\begin{equation}
+\frac{\mathrm{d}\ln s}{\mathrm{d}t} = -\frac{\dot Z}{Z} = \frac{1}{\tau}, \qquad \tau = -\frac{Z}{\dot Z},
+\label{eq:tau}
+\end{equation}
+where $\tau$ is the time-to-contact under constant closing speed~\cite{lee1976,dagan2004}. For each track we use $s=\sqrt{wh}$ for vehicles and $s=h$ for vulnerable road users, where $w$ and $h$ are the box width and height, and estimate $\widehat{\tau^{-1}}$ as the least-squares slope of $\ln s$ against time over the last 0.6~s (at least four samples). An object is treated as approaching when $\widehat{\tau^{-1}} > 0.02\,\mathrm{s}^{-1}$. The per-frame kinematic cue is the largest $\widehat{\tau^{-1}}$ among in-path tracks (and, separately, among all tracks); working with $1/\tau$ rather than $\tau$ keeps the cue bounded when nothing approaches.
+\subsection{Scene, Motion and Lane Descriptors}
+Per frame we compute brightness, contrast (gray-level standard deviation), glare fraction (pixels $\geq 245$), sharpness (Laplacian variance), a dark-channel haze proxy ($15\times15$ minimum filter) and saturation. Dense optical flow is computed with the Farneb\"ack method~\cite{farneback2003} (OpenCV; pyramid scale 0.5, 3 levels, window 15, 3 iterations, polynomial size 5, $\sigma=1.2$) between consecutive gray frames shrunk to a quarter of their size. Central flow magnitude and the flow divergence $D=\partial u/\partial x+\partial v/\partial y$ (flow in pixels per frame) are averaged over the central region (rows 40--90\%, columns 30--70\% of the frame), without any detector. For a surface approaching at constant speed the divergence equals $2/\tau$ per unit time, which gives a detector-free time-to-contact,
+\begin{equation}
+\tau_{\mathrm{div}} = \frac{2}{f_{\mathrm{s}}\,\max(\bar D,\epsilon)},
+\label{eq:taudiv}
+\end{equation}
+with the frame rate $f_{\mathrm{s}}=10$ and $\tau_{\mathrm{div}}$ clipped to $[0.1,10]$~s; $1/\tau_{\mathrm{div}}$ and $\tau_{\mathrm{div}}$ form the \emph{motion-TTC} group. Lanes are detected with Canny edges and a Hough transform; because this failed on most accident clips (Sect.~\ref{sec:pilot}), lane cues are audited but not used by the models.
+
+\subsection{Explainable Anticipation Model}
+For every base cue $c$ we form four causal context features over the last second (10 frames): the current value, the mean, the maximum and the slope. Cues form four groups: \emph{kinematic} (box-growth $1/\tau$, object counts, box occupancy, detection and TTC availability), \emph{scene} (photometric), \emph{motion} (flow) and \emph{motion-TTC}. An XGBoost classifier~\cite{chen2016} (300 trees, depth 4, learning rate 0.05, class-balanced) is trained on frames: positive frames lie within \EvalHorizon~s before the annotated accident onset, negative frames are normal-clip frames, and earlier accident frames are excluded as ambiguous. An alert is raised the first time the score, averaged over the last three frames, exceeds a threshold $\theta$. TreeSHAP~\cite{lundberg2020} decomposes each score exactly as
+\begin{equation}
+g(\mathbf{x}_t) = \phi_0 + \sum_{i=1}^{M} \phi_i(\mathbf{x}_t),
+\label{eq:shap}
+\end{equation}
+where $g$ is the log-odds output, $\phi_0$ its expectation and $\phi_i$ the contribution of feature $i$; summing over a cue's four context features gives cue-level attributions. The \emph{rule baselines} alert when the smoothed in-path $\widehat{\tau^{-1}}$ (or $1/\tau_{\mathrm{div}}$) exceeds a threshold, tuned like the models or, for boxes, fixed at $\tau<2$~s.
+
+%=============================================================================
+\section{Experimental Protocol}
+%=============================================================================
+\subsection{Data and Splits}
+The Car Crash Dataset (CCD)~\cite{bao2020} contains 1,500 accident clips collected from YouTube and 3,000 normal clips sampled from BDD100K~\cite{yu2020}, each 5~s at 10 frames per second (50 frames); the accident onset frame, day or night, weather and ego-vehicle involvement are annotated for each accident clip. We use all \EvalNCrash{} accident and \EvalNNormal{} normal clips and the official training and test lists (\EvalNTrain{} training and \EvalNTest{} test clips, of which \EvalNTestCrash{} accident clips). Twenty percent of the training clips are held out to fix every threshold. Each normal clip receives a deterministic pseudo-onset drawn from the empirical accident-onset distribution, so both classes are scored over spans of equal length distribution.
+
+\subsection{Metrics}
+A clip's score is its maximum smoothed frame score before (pseudo-)onset, giving average precision (AP) and ROC-AUC over test clips. At the threshold giving a \EvalFAR\% false-alarm rate (FAR, share of normal clips with any alert) on held-out clips, we report test FAR, recall, mTTA (mean lead time of the first alert over alerted accident clips) and the share alerted $\geq$1~s ahead. 95\% confidence intervals (CIs) use 1,000 bootstrap resamples of clips.
+
+\subsection{Leakage Test and Within-Accident Protocol}
+\label{sec:within}
+The leakage test summarizes each clip by the means of its cues over the first second (accident clips only if this ends $\geq$1~s before onset, which holds for all) and reports the test AUC of a classifier for accident versus normal. Besides scene, kinematic and motion cues we include \emph{encoding} cues that describe how a clip was stored rather than what it shows: file size and bits per pixel and second, resolution, a block-artifact measure, a noise estimate, letterbox borders and the mean frame difference. Because source differences can then explain any crash-versus-normal score, the \emph{within-accident protocol} uses accident clips only: frames more than 2~s before the onset are negatives, the last second before the onset is positive, and frames in between are ignored. Source, camera and encoder are shared by both classes, so a score can separate them only through what changes as the accident approaches. Thresholds are fixed on held-out training clips at a frame-level false-alarm rate of \EvalFAR\%; recall is the share of test accident clips alerted within the last 2~s.
+
+\subsection{Control Comparison and Audit}
+\label{sec:pilotprot}
+The control comparison takes each cue's change from an early ($[-3,-2)$~s) to a late ($[-1,0)$~s) window relative to (pseudo-)onset and compares accident and normal clips with Mann--Whitney tests, Holm-corrected~\cite{holm1979}, with rank-biserial effect sizes ($r_{\mathrm{rb}}$) and bootstrap CIs~\cite{efron1993}. The audit applies the same windows to the \PilotN{} accident clips alone (\PilotDay{} day, \PilotNight{} night; \PilotNormalW{} normal weather, \PilotSnow{} snowy, \PilotRain{} rainy; onsets \PilotOnsetMin--\PilotOnsetMax~s) with paired Wilcoxon tests, Holm-corrected across 14 cues.
+
+%=============================================================================
+\section{Results}
+%=============================================================================
+\subsection{Audit: Which Cues Survive Accident Footage?}
+\label{sec:pilot}
+\paragraph{Lane markings and box-growth TTC are unreliable.} The lane detector found both boundaries in only \LaneRate\% of frames (\LaneRateSnow\% in snow) and in any frame at all in \LaneClipsAny\% of clips. The share of frames with any detection fell from a median of \TDetEarly{} in the early window to \TDetLate{} in the late window (decrease in \TDetDec\% of clips, Holm $p$ \TDetP), together with vehicle counts (\TVehEarly{} to \TVehLate). An in-path TTC estimate existed in some frame of \TTCClipsAny{} of \PilotN{} clips, but the largest in-path $1/\tau$ did not increase toward impact (median change \TInvTTCDiff~s$^{-1}$; increase in \TInvTTCInc\%, decrease in \TInvTTCDec\% of clips), and a rule alerting at $\tau<2$~s for an in-path object fired in \AlertEarly\% of early and \AlertLate\% of late frames. Box-based monocular cues thus do not strengthen when they are needed most.
+
+\paragraph{A detector-free motion cue rises.} Central flow magnitude rose from \TFlowEarly{} to \TFlowLate{} (median change \TFlowDiff, 95\% CI [\TFlowLo, \TFlowHi]) and increased in \TFlowInc\% of clips (Holm $p$ \TFlowP). Photometric cues shifted by at most 3\% of their level (e.g., brightness \TBrightEarly{} to \TBrightLate), so the windows do not differ merely in lighting.
+
+\subsection{Source Leakage}
+Table~\ref{tab:leak} shows that the first second of a clip, before any accident, already reveals its class. Encoding cues alone give a test AUC of \LeakNuisAUC{} (95\% CI [\LeakNuisLo, \LeakNuisHi]): the median bit rate is \BitrateCrash~kB/s for accident clips and \BitrateNormal~kB/s for normal clips (a factor of \BitrateRatio), all normal clips have 1280$\times$720 pixels whereas \ResOtherCrash{} accident clips do not, and noise estimates differ (median \NoiseCrash{} versus \NoiseNormal). Scene cues alone reach \LeakSceneAUC{} [\LeakSceneLo, \LeakSceneHi], all visual cues \LeakAllAUC{} [\LeakAllLo, \LeakAllHi], and even the kinematic and motion cues reach \LeakKinAUC{} and \LeakMotionAUC. Part of the crash-versus-normal separability of CCD is therefore source-driven and independent of the accident. Pairing each accident clip with a normal clip of similar encoding is infeasible: the encoding classifier separates the classes almost perfectly (out-of-fold AUC \MatchPropAUC) and only \MatchPairs{} pairs fall within the matching caliper. We therefore treat crash-versus-normal results as confounded and rely on the within-accident protocol.
+
+\begin{table}[!t]
+\caption{Source leakage: test AUC of a classifier that sees only the first second of a clip, before any accident}
+\label{tab:leak}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\input{generated_tab_leak.tex}
+\end{table}
+
+\subsection{Crash-Versus-Normal Anticipation}
+Table~\ref{tab:main} reports test performance at a \EvalFAR\% false-alarm rate. The tuned TTC rule ($\tau=\RuleTau$~s) has an AP of \RuleTunedAP{} and recalls \RuleTunedRecall\% of accident clips; the fixed $\tau<2$~s rule alerts \RuleFixedRecall\% of accident clips but also \RuleFixedFAR\% of normal clips. The flow-divergence rule is comparable (AP \RuleDivAP). Learned models are far better: the fused model reaches an AP of \FusedAP{} (95\% CI [\FusedAPLo, \FusedAPHi]), recall \FusedRecall\% and mTTA \FusedmTTA~s, \DeltaAP{} AP above the tuned rule (95\% CI [\DeltaAPLo, \DeltaAPHi]). However, scene cues alone already reach an AP of \SceneAP{} and recall \SceneRecall\%, above kinematic cues (\KinAP) and motion cues (\MotionAP), and they dominate the TreeSHAP attribution of the fused model (\ShapSceneShare\% scene, \ShapKinematicShare\% kinematic, \ShapMotionShare\% motion; top cues \texttt{\ShapTopOne}, \texttt{\ShapTopTwo}, \texttt{\ShapTopThree}; attributions are additive and not causal). Together with Table~\ref{tab:leak}, this means these numbers mostly measure source recognition and should not be read as anticipation skill. Recall of the fused model rises from \CurveFusedRecallFarLo\% at a 5\% to \CurveFusedRecallFarHi\% at a 30\% false-alarm rate, against \CurveRuleTunedRecallFarLo\% to \CurveRuleTunedRecallFarHi\% for the box-TTC rule.
+
+\begin{table}[!t]
+\caption{Accident versus normal clips, CCD test set (confounded by source, Table~\ref{tab:leak}). AP and recall with 95\% CI, ROC-AUC, test false-alarm rate (FAR, \%), mTTA (s) of alerted clips and share alerted $\geq$1~s ahead (R@1s, \%); thresholds fixed at \EvalFAR\% FAR on held-out training clips. The two box-TTC rules share one score}
+\label{tab:main}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\input{generated_tab_main.tex}
+\end{table}
+
+\subsection{Within-Accident Anticipation}
+Table~\ref{tab:within} compares frames of the same clips and so removes the source difference (\WNTest{} test accident clips). The box-growth rule is no better than chance (AUC \WRuleBoxAUC{} [\WRuleBoxAUCLo, \WRuleBoxAUCHi]): in accident footage the largest in-path $1/\tau$ does not rise as the accident approaches. The detector-free rule from flow divergence is weak but above chance (\WRuleDivAUC{} [\WRuleDivAUCLo, \WRuleDivAUCHi]), and learned models are much better: \WMotionTTCAUC{} for the motion-TTC cues alone, \WKinAUC{} for kinematic cues (detections, counts, box occupancy and box growth), \WMotionAUC{} for flow and \WSceneAUC{} for scene cues. Kinematic and motion cues are complementary (\WKinMotionAUC{}), and the fused model reaches an AUC of \WFusedAUC{} [\WFusedAUCLo, \WFusedAUCHi] and an AP of \WFusedAP{}, and alerts \WFusedRecall\% of test accident clips within the last 2~s at a \WFusedFAR\% frame-level false-alarm rate (mTTA \WFusedmTTA~s). Scene cues also separate the two phases (\WSceneAUC), as expected when the camera approaches an obstacle, so we do not read this group as risk-specific.
+
+\begin{table}[!t]
+\caption{Within-accident anticipation on \WNTest{} test accident clips: frames $>2$~s before the onset (negative) versus the last second (positive). Frame-level AUC and AP; recall of clips alerted within the last 2~s and mean lead time (s) at a \EvalFAR\% false-alarm rate on far frames; CIs bootstrapped over clips}
+\label{tab:within}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\input{generated_tab_within.tex}
+\end{table}
+
+\subsection{Are Pre-Accident Changes Accident-Specific?}
+\label{sec:control}
+Figure~\ref{fig:dynamics} compares the early-to-late change of each cue between accident and normal clips (Mann--Whitney, Holm-corrected, effect size $r_{\mathrm{rb}}$; positive means a larger change in accident clips). Central flow magnitude rises in accident clips (mean \DynFlowMagCenterAccidentEarly{} to \DynFlowMagCenterAccidentLate) but not in normal clips (\DynFlowMagCenterNormalEarly{} to \DynFlowMagCenterNormalLate; $r_{\mathrm{rb}}=\CtrlFlowRrb$, Holm $p$ \CtrlFlowP), as does the 90th percentile of flow divergence ($r_{\mathrm{rb}}=\CtrlDivPRrb$); the flow rise is thus specific to the approaching accident rather than to ego braking or camera shake in general. Detection coverage drops specifically in accident clips (any detection \DynHasDetAccidentEarly{} to \DynHasDetAccidentLate{} against \DynHasDetNormalEarly{} to \DynHasDetNormalLate, $r_{\mathrm{rb}}=\CtrlDetRrb$; vehicle count $r_{\mathrm{rb}}=\CtrlVehRrb$), whereas box-growth $1/\tau$ does not rise (\DynMaxInvTtcPathAccidentEarly{} to \DynMaxInvTtcPathAccidentLate{} in accident clips, $r_{\mathrm{rb}}=\CtrlInvTTCRrb$).
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_dynamics.pdf}
+\caption{Event-aligned means with bootstrap 95\% bands for accident clips (solid) and normal clips (dashed, aligned to a pseudo-onset). Dotted lines mark the window boundaries}
+\label{fig:dynamics}
+\end{figure}
+
+\subsection{Cost and Camera-Observable Context}
+Per frame on a laptop RTX~4060 GPU, detection with tracking takes \RtDetect~ms, scene descriptors \RtScene~ms, optical flow \RtFlow~ms, lanes \RtLane~ms and kinematics under 1~ms, in total \RtTotal~ms or about \RtFPS{} frames per second, the frame rate of CCD. As a bound on what a forward camera could supply, XGBoost on 51,641 U.S. police-reported crashes (CRSS 2024~\cite{crss2026}; target: suspected serious or fatal injury, 11.2\% prevalence, injury-derived inputs removed) reaches a test AUC of 0.612 (95\% CI [0.595, 0.631]) from context alone, 0.684 [0.668, 0.701] with the road-user and vehicle types a camera could observe (paired $\Delta$AUC $+0.072$, 95\% CI [0.058, 0.088]) and 0.763 [0.749, 0.775] with the full report; camera-observable context thus recovers about 70\% of the full report's above-chance discrimination. The variables are police-coded, so this is an upper bound for perception.
+
+%=============================================================================
+\section{Discussion and Limitations}
+%=============================================================================
+The main finding is methodological: on CCD, accident and normal clips differ in how they were recorded and encoded, so crash-versus-normal AP, however high, mostly measures the source, and a transparent baseline makes this visible because the scene cues alone reproduce most of the score. Within accident clips, box-growth TTC from a generic detector does not signal the approaching accident while detection coverage falls, whereas detector-free flow cues do. (An early prototype trained on synthetic labels that were a formula of the inputs showed a fusion gain that merely reproduced the label generator, which motivated our real-label, clip-level protocol.)
+
+\paragraph{Limitations.} The within-accident task asks whether the last second differs from earlier frames of the same clip, not whether a clip would have ended in an accident, and it does not estimate false alarms on normal driving, for which a source-matched normal set is needed. CCD clips last 5~s, which caps lead time. We did not separate detector from tracker losses, so the coverage collapse may be tracker-specific, and box-growth TTC was not validated against measured range. Each model was trained once. CRSS is U.S.\ police-coded data, and dense, unmarked Indian traffic is rare in CCD.
+
+%=============================================================================
+\section{Conclusion}
+%=============================================================================
+DriveSense is a transparent baseline for single-dashcam collision anticipation: calibration-free time-to-contact from boxes and from flow divergence, scene and motion cues, gradient-boosted fusion with TreeSHAP attributions, and a protocol that splits by clip, fixes thresholds on held-out clips and tests for source leakage. Encoding properties alone separate CCD's accident and normal clips, so crash-versus-normal scores are unreliable evidence of anticipation; within accident clips the fused cues reach an AUC of \WFusedAUC, with flow and detection coverage carrying the signal that box-growth TTC lacks.
+
+\paragraph{Data and Code Availability.} CCD~\cite{bao2020} and CRSS~\cite{crss2026} are publicly available from their providers. All feature-extraction, analysis and evaluation scripts, the per-clip feature tables and the full robustness-slice and operating-curve tables (CSV) are available in the authors' public repository \texttt{sidii1/DriveSense} on GitHub.
+
+%=============================================================================
+\begin{thebibliography}{99}
+%=============================================================================
+\bibitem{who2023} World Health Organization: Global Status Report on Road Safety 2023. World Health Organization, Geneva (2023)
+
+\bibitem{chan2016} Chan, F.-H., Chen, Y.-T., Xiang, Y., Sun, M.: Anticipating accidents in dashcam videos. In: Lai, S.-H., Lepetit, V., Nishino, K., Sato, Y. (eds.) ACCV 2016. LNCS, vol. 10114, pp. 136--153. Springer, Cham (2017). doi:10.1007/978-3-319-54190-7\_9
+
+\bibitem{suzuki2018} Suzuki, T., Kataoka, H., Aoki, Y., Satoh, Y.: Anticipating traffic accidents with adaptive loss and large-scale incident DB. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pp. 3521--3529 (2018)
+
+\bibitem{bao2020} Bao, W., Yu, Q., Kong, Y.: Uncertainty-based traffic accident anticipation with spatio-temporal relational learning. In: Proceedings of the 28th ACM International Conference on Multimedia, pp. 2682--2690. ACM, New York (2020). doi:10.1145/3394171.3413827
+
+\bibitem{torralba2011} Torralba, A., Efros, A.A.: Unbiased look at dataset bias. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), pp. 1521--1528 (2011). doi:10.1109/CVPR.2011.5995347
+
+\bibitem{geirhos2020} Geirhos, R., Jacobsen, J.-H., Michaelis, C., Zemel, R., Brendel, W., Bethge, M., Wichmann, F.A.: Shortcut learning in deep neural networks. Nature Machine Intelligence \textbf{2}(11), 665--673 (2020). doi:10.1038/s42256-020-00257-z
+
+\bibitem{lundberg2017} Lundberg, S.M., Lee, S.-I.: A unified approach to interpreting model predictions. In: Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 4765--4774 (2017)
+
+\bibitem{lundberg2020} Lundberg, S.M., Erion, G., Chen, H., DeGrave, A., Prutkin, J.M., Nair, B., et al.: From local explanations to global understanding with explainable AI for trees. Nature Machine Intelligence \textbf{2}(1), 56--67 (2020). doi:10.1038/s42256-019-0138-9
+
+\bibitem{yao2023} Yao, Y., Wang, X., Xu, M., Pu, Z., Wang, Y., Atkins, E., Crandall, D.J.: DoTA: unsupervised detection of traffic anomaly in driving videos. IEEE Transactions on Pattern Analysis and Machine Intelligence \textbf{45}(1), 444--459 (2023). doi:10.1109/TPAMI.2022.3150763
+
+\bibitem{lee1976} Lee, D.N.: A theory of visual control of braking based on information about time-to-collision. Perception \textbf{5}(4), 437--459 (1976). doi:10.1068/p050437
+
+\bibitem{dagan2004} Dagan, E., Mano, O., Stein, G.P., Shashua, A.: Forward collision warning with a single camera. In: Proceedings of the IEEE Intelligent Vehicles Symposium, pp. 37--42. IEEE (2004)
+
+\bibitem{yolov8} Jocher, G., Chaurasia, A., Qiu, J.: Ultralytics YOLOv8, version 8.0.0. Software (2023)
+
+\bibitem{zhang2022} Zhang, Y., Sun, P., Jiang, Y., Yu, D., Weng, F., Yuan, Z., et al.: ByteTrack: multi-object tracking by associating every detection box. In: Avidan, S., et al. (eds.) ECCV 2022. LNCS, vol. 13682, pp. 1--21. Springer, Cham (2022). doi:10.1007/978-3-031-20047-2\_1
+
+\bibitem{chen2016} Chen, T., Guestrin, C.: XGBoost: a scalable tree boosting system. In: Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, pp. 785--794. ACM, New York (2016). doi:10.1145/2939672.2939785
+
+\bibitem{farneback2003} Farneb\"ack, G.: Two-frame motion estimation based on polynomial expansion. In: Bigun, J., Gustavsson, T. (eds.) SCIA 2003. LNCS, vol. 2749, pp. 363--370. Springer, Heidelberg (2003). doi:10.1007/3-540-45103-X\_50
+
+\bibitem{yu2020} Yu, F., Chen, H., Wang, X., Xian, W., Chen, Y., Liu, F., et al.: BDD100K: a diverse driving dataset for heterogeneous multitask learning. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pp. 2633--2642 (2020). doi:10.1109/CVPR42600.2020.00271
+
+\bibitem{holm1979} Holm, S.: A simple sequentially rejective multiple test procedure. Scandinavian Journal of Statistics \textbf{6}(2), 65--70 (1979)
+
+\bibitem{efron1993} Efron, B., Tibshirani, R.J.: An Introduction to the Bootstrap. Chapman \& Hall/CRC, New York (1993). doi:10.1201/9780429246593
+
+\bibitem{crss2026} National Center for Statistics and Analysis: Crash Report Sampling System Analytical User's Manual, 2016--2024. Report No. DOT HS 813 796. National Highway Traffic Safety Administration, Washington, DC (2026). doi:10.21949/krxa-cb93
+
+\end{thebibliography}
+\end{document}

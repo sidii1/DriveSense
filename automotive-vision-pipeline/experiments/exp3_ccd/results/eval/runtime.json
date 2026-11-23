@@ -1,0 +1,12 @@
+{
+  "detect_track": 44.39554999953543,
+  "kinematics": 0.3561000012268778,
+  "scene": 20.97249999860651,
+  "flow": 29.8578500005533,
+  "lane": 4.7640999982832,
+  "total_ms": 100.34609999820532,
+  "fps_end_to_end": 9.965509372241522,
+  "fps_without_lane": 10.462220920265477,
+  "n_frames": 200,
+  "device": "NVIDIA GeForce RTX 4060 Laptop GPU"
+}
