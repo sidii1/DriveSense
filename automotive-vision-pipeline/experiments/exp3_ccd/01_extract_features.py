@@ -7,6 +7,7 @@ import argparse
 import time
 import traceback
 import cv2
+cv2.setNumThreads(1)   # many worker processes run in parallel; avoid thread oversubscription
 import numpy as np
 import pandas as pd
 import config as C
@@ -26,6 +27,7 @@ def main():
     ap.add_argument("--demo-ids", default="", help="comma-separated video ids to always render")
     ap.add_argument("--no-resume", action="store_true")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--reverse", action="store_true", help="process the shard back to front (extra workers)")
     ap.add_argument("--shard", default="0/1", help="i/n: process only videos with index %% n == i (run n workers in parallel)")
     a = ap.parse_args()
 
@@ -34,7 +36,11 @@ def main():
         vids = vids[: a.limit]
     si, sn = (int(x) for x in a.shard.split("/"))
     vids = vids[si::sn]
+    if a.reverse:
+        vids = vids[::-1]
     demo_ids = {s.strip() for s in a.demo_ids.split(",") if s.strip()}
+    import torch
+    torch.set_num_threads(1)
     det = Detector(device=a.device)
     flow = FlowEstimator()
     n_demo, t0 = 0, time.time()

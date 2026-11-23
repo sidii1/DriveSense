@@ -10,7 +10,7 @@ An ADAS-style perception pipeline that turns dashcam video into lane geometry, t
 
 > **Research question:** does adding real-time visual features (lane position, closing speed, scene context) to a crash-history model improve context-aware risk estimation?
 
-**Status:** the perception pipeline and dashboard are working end to end on a KITTI sequence. Quantitative validation of the risk models is still in progress (see [Evaluation status](#evaluation-status) and [Known limitations](#known-limitations)).
+**Status:** the perception pipeline and dashboard work end to end on a KITTI sequence. The Model A/B/C benchmark in `src/fusion_model.py` uses **synthetic** labels (a development artifact; it supports no claim about real crashes). Real-data evaluations are in `experiments/exp3_ccd` (Car Crash Dataset) and `experiments/exp1_crss` (NHTSA CRSS); see [Reproducing the IRIS 2027 paper](#reproducing-the-iris-2027-paper) and [Known limitations](#known-limitations).
 
 ---
 
@@ -195,12 +195,35 @@ Keep `data/`, `outputs/`, `*.mp4` and `*.pt` in `.gitignore`. Large files cause 
 
 The perception modules have been **checked qualitatively** on one 114-frame KITTI sequence: lane overlay, track-ID continuity, plausibility of distance and TTC values, and overlay/video sync on the dashboard.
 
-The risk-model benchmark (Models A vs B vs C) has **not yet been independently validated**. Before quoting any ROC-AUC / F1 lift, the following needs to be done:
+The Model A/B/C benchmark is trained on **synthetic labels** and is kept only as a development artifact; it has not been validated on real crashes, and no lift is claimed. The real-data evaluation is reported in the IRIS 2027 paper (see below). Remaining work:
 
 - [ ] Confirm how the training labels are produced. If they are synthesized from the same input features, the reported lift is not evidence about real crashes.
 - [ ] Add a rule-based baseline (e.g. "alert if TTC < 2 s") and show whether the models beat it.
 - [ ] Evaluate on multiple real clips, reporting mean ± std and confidence intervals.
 - [ ] Evaluate on a dashcam dataset with labelled accident moments (e.g. DAD, CCD, DoTA), measuring how early the risk score rises before the event.
+
+## Reproducing the IRIS 2027 paper
+
+Everything in the paper is produced by scripts in `experiments/exp3_ccd` (CCD video) and `experiments/exp1_crss` (CRSS); numbers reach the LaTeX source through generated macro files in `paper/`. Run from `experiments/exp3_ccd` with the dataset at `data/CarCrash/` (`videos/Crash-1500/*.mp4`, `videos/Normal/*.mp4`, `videos/Crash-1500.txt`, official lists `splits/train.txt` and `splits/test.txt`):
+
+```bash
+python -m venv .venv && .venv/Scripts/pip install -r experiments/exp3_ccd/requirements_exp3.txt xgboost scikit-learn scipy matplotlib pandas shap
+export EXP3_CCD_DIR=../../data/CarCrash/videos/Crash-1500
+python 00b_build_crash_table.py                                   # onset frame + metadata
+python 01_extract_features.py --demo 0                            # accident clips -> results/frame_features
+EXP3_CCD_DIR=../../data/CarCrash/videos/Normal EXP3_OUT=results_normal python 01_extract_features.py --demo 0   # normal clips
+python 02_build_video_features.py && python 03_temporal_analysis.py
+python 05_nuisance_features.py ../../data/CarCrash/videos/Crash-1500 results/nuisance_crash.csv
+python 05_nuisance_features.py ../../data/CarCrash/videos/Normal     results/nuisance_normal.csv
+python ../../../paper/scripts/pilot.py results ../../../paper     # Sect. 5.1 and its table
+python 04_anticipation_eval.py --crash results/frame_features_all.csv --normal-dir results_normal/frame_features \
+       --split-dir ../../data/CarCrash/splits --nuisance results/nuisance_crash.csv results/nuisance_normal.csv \
+       --out results/eval --paper-dir ../../../paper
+python 08_runtime.py ../../data/CarCrash/videos/Crash-1500 ../../../paper
+cd ../../../paper && pdflatex main && pdflatex main
+```
+
+`01_extract_features.py` accepts `--shard i/n` so several workers can run in parallel (on Windows, raise the workers' process priority). CCD itself must be obtained from its authors (https://github.com/Cogito2012/CarCrashDataset); its normal clips are sampled from BDD100K.
 
 ## Known limitations
 

@@ -203,22 +203,20 @@ def train_and_compare_all_models(output_dir: str = "models", docs_dir: str = "do
     # ---------------- GENERATE COMPARISON REPORT ----------------
     report_path = os.path.join(docs_dir, "model_comparison_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write("# Model Comparison Benchmark: Model A vs Model B vs Model C\n\n")
-        f.write("## 1. Research Hypothesis Validation\n")
-        f.write("> **Research Question:** *\"Does adding real-time visual/environmental features to a crash-history model improve context-aware risk estimation?\"*\n\n")
-        f.write("**Conclusion:** **YES.** Multi-modal fusion (Model C) achieves superior discriminative performance across all metrics, lifting F1-score by **+" + f"{(m_c['F1-Score'] - m_a['F1-Score'])*100:.1f}%** and ROC-AUC by **+{(m_c['ROC-AUC'] - m_a['ROC-AUC'])*100:.1f}%** over the crash-only baseline.\n\n")
-
-        f.write("## 2. Core 3-Row Benchmark Results Table\n\n")
+        f.write("# Model Comparison: Model A vs Model B vs Model C (SYNTHETIC development artifact)\n\n")
+        f.write("> **WARNING.** The labels used here come from `generate_multimodal_dataset()`, a synthetic generator whose label is a formula of the input features. "
+                "The numbers below therefore measure how well a model recovers that formula, **not** crash risk on real roads, and they must not be quoted as evidence that fusion helps. "
+                "The real-data evaluation is in `experiments/exp3_ccd` (Car Crash Dataset) and `experiments/exp1_crss` (NHTSA CRSS).\n\n")
+        f.write("## 1. Synthetic benchmark (development only)\n\n")
+        f.write("## 2. Results on the synthetic labels\n\n")
         f.write("| Model Architecture | Input Modality | Precision | Recall | F1-Score | ROC-AUC | PR-AUC |\n")
         f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
         f.write(f"| **Model A (Crash Baseline)** | Tabular NHTSA CRSS Features | `{m_a['Precision']:.4f}` | `{m_a['Recall']:.4f}` | `{m_a['F1-Score']:.4f}` | `{m_a['ROC-AUC']:.4f}` | `{m_a['PR-AUC']:.4f}` |\n")
         f.write(f"| **Model B (Vision-Only)** | Real-Time Lane, ByteTrack, TTC | `{m_b['Precision']:.4f}` | `{m_b['Recall']:.4f}` | `{m_b['F1-Score']:.4f}` | `{m_b['ROC-AUC']:.4f}` | `{m_b['PR-AUC']:.4f}` |\n")
         f.write(f"| **Model C (Multi-Modal Fusion)** | **Fused (Tabular + Vision)** | **`{m_c['Precision']:.4f}`** | **`{m_c['Recall']:.4f}`** | **`{m_c['F1-Score']:.4f}`** | **`{m_c['ROC-AUC']:.4f}`** | **`{m_c['PR-AUC']:.4f}`** |\n\n")
 
-        f.write("## 3. Why 3 Clean Rows Outperform Ablation Overkill\n")
-        f.write("1. **Isolated Baselines:** Model A establishes the ceiling of actuarial/demographic data without live sensors. Model B establishes the ceiling of uncalibrated edge vision.\n")
-        f.write("2. **Clear Synergistic Lift:** Model C proves that real-time kinematics (TTC, lane drift) and static road risk priors are orthogonal and mutually reinforcing.\n")
-        f.write("3. **Production Relevance:** In real automotive deployments, an ADAS unit has access to both GPS/map priors and front-facing optics — Model C validates this exact hardware configuration.\n")
+        f.write("## 3. How to read this\n")
+        f.write("Differences between rows reflect how much of the synthetic label formula each input set contains. No claim about real-world crash prediction follows from them.\n")
 
     print(f"[INFO] Comparison report saved to: {report_path}")
 
