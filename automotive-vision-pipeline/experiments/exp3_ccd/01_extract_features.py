@@ -13,6 +13,7 @@ import config as C
 from utils import list_videos
 from perception.detector import Detector
 from perception.kinematics import TrackKinematics, frame_summary
+from perception.flow import FlowEstimator
 from perception.lane import detect_lane
 from perception.scene import scene_features
 from perception.viz import draw
@@ -25,13 +26,17 @@ def main():
     ap.add_argument("--demo-ids", default="", help="comma-separated video ids to always render")
     ap.add_argument("--no-resume", action="store_true")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--shard", default="0/1", help="i/n: process only videos with index %% n == i (run n workers in parallel)")
     a = ap.parse_args()
 
     vids = list_videos()
     if a.limit:
         vids = vids[: a.limit]
+    si, sn = (int(x) for x in a.shard.split("/"))
+    vids = vids[si::sn]
     demo_ids = {s.strip() for s in a.demo_ids.split(",") if s.strip()}
     det = Detector(device=a.device)
+    flow = FlowEstimator()
     n_demo, t0 = 0, time.time()
 
     for k, path in enumerate(vids):
@@ -45,6 +50,7 @@ def main():
             cap = cv2.VideoCapture(str(path))
             fps = cap.get(cv2.CAP_PROP_FPS) or C.FPS_DEFAULT
             det.reset()
+            flow.reset()
             kin, writer, rows, i = None, None, [], 0
             while True:
                 ok, frame = cap.read()
@@ -63,6 +69,7 @@ def main():
                 row.update(frame_summary(dets, W, H))
                 row.update({k_: v for k_, v in lane.items() if k_ != "geom"})
                 row.update(scene_features(frame))
+                row.update(flow.update(frame))
                 rows.append(row)
                 if writer is not None:
                     writer.write(draw(frame, dets, lane, row))
