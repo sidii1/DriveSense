@@ -75,3 +75,4 @@ outputs/
 *.pt
 .venv/
 __pycache__/
+frame_features/
