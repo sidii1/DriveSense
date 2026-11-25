@@ -7,10 +7,6 @@
  
 Code, per-clip features and results for the paper:
  
-> **Does Early Warning Survive Source and Position Controls? A Bias-Aware Evaluation of Interpretable Dashcam Cues on the Car Crash Dataset**
-> Siddhi Dhoke — Indian Institute of Information Technology Nagpur
-> Prepared for **IRIS 2027** (IIT Madras, Shaastra); proceedings in Springer *Lecture Notes in Electrical Engineering*, subject to Springer review.
- 
 **DriveSense** is a lightweight, interpretable pipeline for single-dashcam collision anticipation: YOLOv8 + ByteTrack, two calibration-free time-to-contact (TTC) cues (from box growth and from optical-flow divergence), scene and flow statistics, and gradient-boosted trees with TreeSHAP. We use it as a probe to ask a different question: **do high anticipation scores on the Car Crash Dataset (CCD) actually measure early-warning ability?**
  
 ---
