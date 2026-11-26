@@ -30,8 +30,6 @@ desktop.ini
 # or keep a small demo clip and upload separately (e.g. Google Drive link
 # in the README) instead of committing raw/processed video.
 data/*.mp4
-outputs/*.mp4
-outputs/*.gif
 !data/.gitkeep
 !outputs/.gitkeep
 
@@ -42,17 +40,12 @@ outputs/*.gif
 # research artifact, so they're intentionally NOT ignored here — remove
 # the exclusion below only if you want to also track them via Git LFS
 # instead of committing directly.
-*.pt
-*.caffemodel
-*.prototxt
-!models/model_a_baseline.json
-!models/model_b_vision.json
-!models/model_c_fused.json
+
 
 # ── Generated telemetry / large JSON logs ──────────────────────────────
 # demo_telemetry.json is regenerated every time you run pipeline.py —
 # no need to track it, and it can get large with full 300+ frame runs.
-outputs/demo_telemetry*.json
+
 
 # ── Node (only relevant if you ever add npm tooling to web/) ───────────
 node_modules/
@@ -70,7 +63,7 @@ dist/
 *.egg
 
 data/
-outputs/
+
 *.mp4
 *.pt
 .venv/
